@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -104,6 +104,15 @@ export default function SettingsDrawer({
   const [showGoogleKey, setShowGoogleKey] = useState(false);
   const [langQuery, setLangQuery] = useState("");
   const [showLangDropdown, setShowLangDropdown] = useState(false);
+  const [hasDisplayMedia, setHasDisplayMedia] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setHasDisplayMedia(
+        !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia),
+      );
+    }
+  }, []);
 
   const {
     register,
@@ -143,6 +152,11 @@ export default function SettingsDrawer({
 
     const mode = values.enableTranslation ? values.translationTab : "none";
 
+    let resolvedAudioRouting = values.audioRouting;
+    if (!hasDisplayMedia && resolvedAudioRouting !== "mic-only") {
+      resolvedAudioRouting = "mic-only";
+    }
+
     dispatch(
       updateConfig({
         sonioxApiKey: values.sonioxApiKey,
@@ -156,7 +170,7 @@ export default function SettingsDrawer({
         translationTargetLanguage: values.translationTargetLanguage,
         translationLanguageA: values.translationLanguageA,
         translationLanguageB: values.translationLanguageB,
-        audioRouting: values.audioRouting,
+        audioRouting: resolvedAudioRouting,
       }),
     );
     onClose();
@@ -655,9 +669,15 @@ export default function SettingsDrawer({
               {...register("audioRouting")}
               className="w-full bg-neutral-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
             >
-              <option value="mix">Mix Mic + System Speakers</option>
               <option value="mic-only">Microphone Only</option>
-              <option value="speaker-only">System Speakers Only</option>
+              <option value="speaker-only" disabled={!hasDisplayMedia}>
+                System Speakers Only
+                {!hasDisplayMedia && " (Not supported on this device)"}
+              </option>
+              <option value="mix" disabled={!hasDisplayMedia}>
+                Mix Mic + System Speakers
+                {!hasDisplayMedia && " (Not supported on this device)"}
+              </option>
             </select>
           </div>
 
