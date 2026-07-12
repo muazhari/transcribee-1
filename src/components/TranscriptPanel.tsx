@@ -51,7 +51,10 @@ export default function TranscriptPanel({
     isAutoScrollLocked.current = isAtBottom;
   };
 
-  const handleTokenClick = (startTimestamp: number, endTimestamp: number) => {
+  const handleTranscriptClick = (
+    startTimestamp: number,
+    endTimestamp: number,
+  ) => {
     if (!activeSession) return;
     AudioCaptureManager.playTokenAudio(
       activeSession.id,
@@ -83,11 +86,11 @@ export default function TranscriptPanel({
           return (
             <span
               key={idx}
-              onClick={() => handleTokenClick(start, end)}
+              onClick={() => handleTranscriptClick(start, end)}
               className={
                 transcript.isFinal
                   ? "cursor-pointer hover:bg-violet-500/20 hover:text-violet-300 rounded transition duration-75 border-b border-transparent hover:border-violet-500/40"
-                  : "text-sm leading-relaxed text-neutral-400 italic font-light select-none tracking-wide flex flex-wrap items-center"
+                  : "leading-relaxed text-neutral-400 italic select-none tracking-wide rounded transition duration-75 border-b border-transparent "
               }
               title={`Play word (${formatTime(start)} - ${formatTime(end)})`}
             >
@@ -233,7 +236,15 @@ export default function TranscriptPanel({
                     <span className="text-xs font-bold uppercase tracking-wider text-violet-300 px-2.5 py-0.5 rounded-md bg-violet-950/40 border border-violet-500/20">
                       Speaker {transcript.speakerId}
                     </span>
-                    <span className="text-[10px] text-neutral-500">
+                    <span
+                      className="cursor-pointer text-[10px] text-neutral-500 hover:text-violet-300 p-1 hover:bg-violet-500/20 rounded transition duration-75 border-b border-transparent hover:border-violet-500/40"
+                      onClick={() =>
+                        handleTranscriptClick(
+                          transcript.startTimestamp,
+                          transcript.endTimestamp,
+                        )
+                      }
+                    >
                       {start} - {end}
                     </span>
                   </div>

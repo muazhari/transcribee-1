@@ -73,40 +73,51 @@ export const transcriptionSlice = createSlice({
 
       for (const transcript of originalTranscripts) {
         const isEnd = transcript.text.includes("<end>");
-        const cleanText = transcript.text.replace("<end>", "");
 
         if (!currentSegment) {
-          if (cleanText.trim().length > 0 || !isEnd) {
+          if (transcript.text.trim().length > 0 || !isEnd) {
             currentSegment = {
               ...transcript,
-              text: cleanText,
+              text: transcript.text,
             };
+            if (isEnd) {
+              segmentTranscripts.push(currentSegment);
+              currentSegment = null;
+            }
           }
         } else {
           const isNewSpeaker =
             transcript.speakerId !== currentSegment.speakerId;
           const isNewLanguage = transcript.language !== currentSegment.language;
 
-          if (isNewSpeaker || isNewLanguage || isEnd) {
-            if (cleanText.length > 0) {
-              currentSegment.text += cleanText;
+          if (isNewSpeaker || isNewLanguage) {
+            segmentTranscripts.push(currentSegment);
+            if (isEnd) {
+              if (transcript.text.trim().length > 0) {
+                segmentTranscripts.push({
+                  ...transcript,
+                  text: transcript.text,
+                });
+              }
+              currentSegment = null;
+            } else {
+              currentSegment = {
+                ...transcript,
+                text: transcript.text,
+              };
+            }
+          } else if (isEnd) {
+            if (transcript.text.length > 0) {
+              currentSegment.text += transcript.text;
               currentSegment.endTimestamp = transcript.endTimestamp;
               currentSegment.duration =
                 currentSegment.endTimestamp - currentSegment.startTimestamp;
               currentSegment.isFinal = transcript.isFinal;
             }
             segmentTranscripts.push(currentSegment);
-
-            if (isEnd) {
-              currentSegment = null;
-            } else {
-              currentSegment = {
-                ...transcript,
-                text: cleanText,
-              };
-            }
+            currentSegment = null;
           } else {
-            currentSegment.text += cleanText;
+            currentSegment.text += transcript.text;
             currentSegment.endTimestamp = transcript.endTimestamp;
             currentSegment.duration =
               currentSegment.endTimestamp - currentSegment.startTimestamp;

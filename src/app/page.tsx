@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { db } from "../lib/services/db";
 import {
@@ -45,6 +45,12 @@ export default function Home() {
 
   const isRecording = useAppSelector((state) => state.mediaControl.isRecording);
   const isPaused = useAppSelector((state) => state.mediaControl.isPaused);
+
+  const isPausedRef = useRef(isPaused);
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
+
   const config = useAppSelector((state) => state.config);
 
   const { tokenLimitTruncated, tokenLimit } = useAppSelector(
@@ -226,7 +232,7 @@ export default function Home() {
         config.audioRouting,
         (pcmData) => {
           // Skip pushing raw frames to Soniox if recording is paused
-          if (!isPaused) {
+          if (!isPausedRef.current) {
             sonioxStreamClient.sendAudio(pcmData);
           }
         },

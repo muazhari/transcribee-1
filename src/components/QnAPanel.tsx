@@ -106,7 +106,7 @@ export default function QnAPanel() {
   };
 
   const suggestionPrompts = [
-    "Summarize this meeting",
+    "Summarize this transcriptions",
     "What are the main action items?",
     "Compare what Speaker 1 and Speaker 2 said",
   ];
@@ -137,11 +137,10 @@ export default function QnAPanel() {
           <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-neutral-500 my-auto">
             <span className="text-3xl mb-2">🤖</span>
             <p className="text-xs font-semibold text-neutral-400">
-              Ask questions about this meeting
+              Ask questions about this transcriptions
             </p>
             <p className="text-[10px] text-neutral-500 mt-1 max-w-xs">
-              Gemini will reference the full meeting transcript to compile
-              summary context.
+              Gemini will reference the full transcriptions as context.
             </p>
 
             {/* Suggestions */}
