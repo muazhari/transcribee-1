@@ -223,21 +223,21 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
   await expect(page.locator("text=Ready to transcribe")).toBeVisible();
 
   // SessionPanel (Session list) should be hidden by default on mobile
-  await expect(page.locator("text=Meeting Logs")).not.toBeVisible();
+  await expect(page.locator("text=Session Logs")).not.toBeVisible();
 
   // QnA panel should be hidden by default on mobile
   await expect(page.locator("text=AI Q&A Assistant")).not.toBeVisible();
 
   // 3. Switch to "Session List" tab
   await page.click('button:has-text("Session List")');
-  await expect(page.locator("text=Meeting Logs")).toBeVisible();
+  await expect(page.locator("text=Session Logs")).toBeVisible();
   await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
   await expect(page.locator("text=AI Q&A Assistant")).not.toBeVisible();
 
   // 4. Switch to "Q&A Chatting" tab
   await page.click('button:has-text("Q&A Chatting")');
   await expect(page.locator("text=AI Q&A Assistant")).toBeVisible();
-  await expect(page.locator("text=Meeting Logs")).not.toBeVisible();
+  await expect(page.locator("text=Session Logs")).not.toBeVisible();
   await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
 
   // 5. Open settings from Session List tab on mobile
@@ -255,14 +255,14 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
   await page.click('button:has-text("New Session")');
   // It should automatically switch activeTab to "transcription"
   await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
-  await expect(page.locator("text=Meeting Logs")).not.toBeVisible();
+  await expect(page.locator("text=Session Logs")).not.toBeVisible();
 
   // 7. Verify switching to a session in the session list auto-switches to Live Session
   await page.click('button:has-text("Session List")');
-  await expect(page.locator("text=Meeting Logs")).toBeVisible();
+  await expect(page.locator("text=Session Logs")).toBeVisible();
   // Click the session item in the session panel list (the title text of the session item)
   await page.click('div[class*="cursor-pointer"] >> text=Session -');
   // It should switch to Live Session
-  await expect(page.locator("text=Meeting Logs")).not.toBeVisible();
+  await expect(page.locator("text=Session Logs")).not.toBeVisible();
   await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
 });

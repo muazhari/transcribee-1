@@ -60,91 +60,125 @@ export const transcriptionSlice = createSlice({
       ];
       const segmentTranscripts: Transcript[] = [];
 
-      // 1. Separate original and translation transcripts
-      const originalTranscripts = transcripts.filter(
-        (t) => t.translationStatus === "original",
-      );
-      const translationTranscripts = transcripts.filter(
-        (t) => t.translationStatus === "translation",
-      );
+      // Clean up <end> token helper:
+      const cleanText = (text: string) => text.replace(/<end>/g, "");
 
-      // 2. Group the original transcripts into segments by speaker and language
       let currentSegment: Transcript | null = null;
 
-      for (const transcript of originalTranscripts) {
+      for (const transcript of transcripts) {
         const isEnd = transcript.text.includes("<end>");
+        const cleanedText = cleanText(transcript.text);
 
-        if (!currentSegment) {
-          if (transcript.text.length > 0 || !isEnd) {
-            currentSegment = {
-              ...transcript,
-              text: transcript.text,
-            };
-            if (isEnd) {
-              segmentTranscripts.push(currentSegment);
-              currentSegment = null;
+        if (transcript.translationStatus === "translation") {
+          // It's a translation token. Find the matching segment.
+          let matchingSegment: Transcript | null = null;
+          const hasTimestamps =
+            typeof transcript.startTimestamp === "number" &&
+            !isNaN(transcript.startTimestamp) &&
+            typeof transcript.endTimestamp === "number" &&
+            !isNaN(transcript.endTimestamp);
+
+          if (
+            currentSegment &&
+            currentSegment.speakerId === transcript.speakerId &&
+            (!hasTimestamps ||
+              (currentSegment.startTimestamp <= transcript.endTimestamp &&
+                currentSegment.endTimestamp >= transcript.startTimestamp))
+          ) {
+            matchingSegment = currentSegment;
+          } else {
+            // Find in already completed segmentTranscripts (reverse order to find the latest/best match)
+            for (let i = segmentTranscripts.length - 1; i >= 0; i--) {
+              const seg = segmentTranscripts[i];
+              if (
+                seg.speakerId === transcript.speakerId &&
+                (!hasTimestamps ||
+                  (seg.startTimestamp <= transcript.endTimestamp &&
+                    seg.endTimestamp >= transcript.startTimestamp))
+              ) {
+                matchingSegment = seg;
+                break;
+              }
+            }
+          }
+
+          if (matchingSegment) {
+            if (!matchingSegment.translation) {
+              matchingSegment.translation = cleanedText;
+            } else {
+              matchingSegment.translation += cleanedText;
             }
           }
         } else {
-          const isNewSpeaker =
-            transcript.speakerId !== currentSegment.speakerId;
-          const isNewLanguage = transcript.language !== currentSegment.language;
+          // Original transcript logic
+          if (!currentSegment) {
+            if (cleanedText.trim().length > 0 || !isEnd) {
+              currentSegment = {
+                ...transcript,
+                text: cleanedText,
+              };
+              if (isEnd) {
+                if (currentSegment.text.trim().length > 0) {
+                  segmentTranscripts.push(currentSegment);
+                }
+                currentSegment = null;
+              }
+            }
+          } else {
+            const isNewSpeaker =
+              transcript.speakerId !== currentSegment.speakerId;
+            const isNewLanguage =
+              transcript.language !== currentSegment.language;
 
-          if (isNewSpeaker || isNewLanguage) {
-            segmentTranscripts.push(currentSegment);
-            if (isEnd) {
-              if (transcript.text.length > 0) {
-                segmentTranscripts.push({
-                  ...transcript,
-                  text: transcript.text,
-                });
+            if (isNewSpeaker || isNewLanguage) {
+              if (currentSegment.text.trim().length > 0) {
+                segmentTranscripts.push(currentSegment);
+              }
+              if (isEnd) {
+                if (cleanedText.trim().length > 0) {
+                  segmentTranscripts.push({
+                    ...transcript,
+                    text: cleanedText,
+                  });
+                }
+                currentSegment = null;
+              } else {
+                if (cleanedText.trim().length > 0) {
+                  currentSegment = {
+                    ...transcript,
+                    text: cleanedText,
+                  };
+                } else {
+                  currentSegment = null;
+                }
+              }
+            } else if (isEnd) {
+              if (cleanedText.trim().length > 0) {
+                currentSegment.text += cleanedText;
+              }
+              currentSegment.endTimestamp = transcript.endTimestamp;
+              currentSegment.duration =
+                currentSegment.endTimestamp - currentSegment.startTimestamp;
+              currentSegment.isFinal = transcript.isFinal;
+              if (currentSegment.text.trim().length > 0) {
+                segmentTranscripts.push(currentSegment);
               }
               currentSegment = null;
             } else {
-              currentSegment = {
-                ...transcript,
-                text: transcript.text,
-              };
-            }
-          } else if (isEnd) {
-            if (transcript.text.length > 0) {
-              currentSegment.text += transcript.text;
+              if (cleanedText.trim().length > 0) {
+                currentSegment.text += cleanedText;
+              }
               currentSegment.endTimestamp = transcript.endTimestamp;
               currentSegment.duration =
                 currentSegment.endTimestamp - currentSegment.startTimestamp;
               currentSegment.isFinal = transcript.isFinal;
             }
-            segmentTranscripts.push(currentSegment);
-            currentSegment = null;
-          } else {
-            currentSegment.text += transcript.text;
-            currentSegment.endTimestamp = transcript.endTimestamp;
-            currentSegment.duration =
-              currentSegment.endTimestamp - currentSegment.startTimestamp;
-            currentSegment.isFinal = transcript.isFinal;
           }
         }
       }
 
-      if (currentSegment) {
+      if (currentSegment && currentSegment.text.trim().length > 0) {
         segmentTranscripts.push(currentSegment);
-      }
-
-      // 3. Attach translation transcripts to the matching original segments
-      for (const translation of translationTranscripts) {
-        const matchingSegment = segmentTranscripts.find(
-          (seg) =>
-            seg.speakerId === translation.speakerId &&
-            seg.startTimestamp <= translation.endTimestamp &&
-            seg.endTimestamp >= translation.startTimestamp,
-        );
-        if (matchingSegment) {
-          if (!matchingSegment.translation) {
-            matchingSegment.translation = translation.text;
-          } else {
-            matchingSegment.translation += translation.text;
-          }
-        }
       }
 
       state.transcripts = segmentTranscripts;
