@@ -260,14 +260,13 @@ export default function TranscriptPanel({
                   </div>
 
                   {/* Translation block if present */}
-                  {(transcript.translation ||
-                    transcript.translationStatus === "translation") && (
+                  {transcript.translation && (
                     <div className="mt-2 pt-2 border-t border-white/5 flex flex-col gap-1">
                       <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
                         Translation
                       </span>
                       <p className="text-sm text-neutral-400 italic">
-                        {transcript.translation || transcript.text}
+                        {transcript.translation}
                       </p>
                     </div>
                   )}

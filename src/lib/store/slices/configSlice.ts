@@ -8,6 +8,7 @@ export interface ConfigState {
   languageHints: string[];
   enableEndpointDetection: boolean;
   enableLanguageIdentification: boolean;
+  enableTranslation: boolean;
   translationMode: "none" | "one-way" | "two-way";
   audioRouting: "mix" | "mic-only" | "speaker-only";
   translationTargetLanguage: string;
@@ -23,6 +24,7 @@ const initialState: ConfigState = {
   languageHints: ["en", "id"],
   enableEndpointDetection: true,
   enableLanguageIdentification: true,
+  enableTranslation: false,
   translationMode: "none",
   audioRouting: "mic-only",
   translationTargetLanguage: "id",

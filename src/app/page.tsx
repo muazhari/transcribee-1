@@ -187,6 +187,7 @@ export default function Home() {
           languageHints: config.languageHints,
           enableEndpointDetection: config.enableEndpointDetection,
           enableLanguageIdentification: config.enableLanguageIdentification,
+          enableTranslation: config.enableTranslation,
           translationMode: config.translationMode,
           translationTargetLanguage: config.translationTargetLanguage,
           translationLanguageA: config.translationLanguageA,

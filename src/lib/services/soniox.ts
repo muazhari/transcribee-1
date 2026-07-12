@@ -4,6 +4,7 @@ export interface SonioxConfig {
   languageHints: string[];
   enableEndpointDetection: boolean;
   enableLanguageIdentification: boolean;
+  enableTranslation: boolean;
   translationMode: "none" | "one-way" | "two-way";
   translationTargetLanguage?: string;
   translationLanguageA?: string;
@@ -64,17 +65,21 @@ export class SonioxStreamClient {
       };
 
       // Add translation properties if enabled
-      if (config.translationMode === "one-way") {
-        initialConfig.translation = {
-          type: "one_way",
-          target_language: config.translationTargetLanguage || "id",
-        };
-      } else if (config.translationMode === "two-way") {
-        initialConfig.translation = {
-          type: "two_way",
-          language_a: config.translationLanguageA || "en",
-          language_b: config.translationLanguageB || "id",
-        };
+      if (config.enableTranslation) {
+        if (config.translationMode === "one-way") {
+          initialConfig.translation = {
+            type: "one_way",
+            target_language: config.translationTargetLanguage || "id",
+          };
+        } else if (config.translationMode === "two-way") {
+          initialConfig.translation = {
+            type: "two_way",
+            language_a: config.translationLanguageA || "en",
+            language_b: config.translationLanguageB || "id",
+          };
+        }
+      } else {
+        delete initialConfig.translation;
       }
 
       this.ws?.send(JSON.stringify(initialConfig));
