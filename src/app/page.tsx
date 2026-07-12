@@ -11,7 +11,6 @@ import {
 import {
   setSessionId,
   updateTranscripts,
-  clearTranscripts,
   truncateOldTranscripts,
 } from "../lib/store/slices/transcriptionSlice";
 import {
@@ -200,7 +199,6 @@ export default function Home() {
           onClose: () => {
             audioCaptureManager.stop();
             dispatch(stopRecordingState());
-            dispatch(clearTranscripts());
           },
           onError: (e) => {
             dispatch(setStreamHealth("poor"));

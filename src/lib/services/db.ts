@@ -212,11 +212,28 @@ class TranscribeeDB {
   }
 
   async saveTranscripts(transcripts: Transcript[]): Promise<void> {
+    if (transcripts.length === 0) return;
+    const sessionId = transcripts[0].sessionId;
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const transaction = db.transaction("transcripts", "readwrite");
       const store = transaction.objectStore("transcripts");
-      transcripts.forEach((t) => store.put(t));
+
+      // Delete all existing transcripts for this sessionId
+      const index = store.index("sessionId");
+      const cursorRequest = index.openCursor(IDBKeyRange.only(sessionId));
+
+      cursorRequest.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        } else {
+          // After deletion is complete, save all new transcripts
+          transcripts.forEach((t) => store.put(t));
+        }
+      };
+
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
     });

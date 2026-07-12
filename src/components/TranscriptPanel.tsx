@@ -75,7 +75,7 @@ export default function TranscriptPanel({
     const N = words.length;
     const durationPerWord = N > 0 ? transcript.duration / N : 0;
     return (
-      <div className="flex flex-wrap gap-x-1.5 gap-y-1">
+      <div className="flex flex-wrap gap-x-1 gap-y-1">
         {words.map((word, idx) => {
           const start = Math.round(
             transcript.startTimestamp + idx * durationPerWord,
