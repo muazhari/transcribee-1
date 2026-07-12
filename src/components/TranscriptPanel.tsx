@@ -203,7 +203,7 @@ export default function TranscriptPanel({
               Ready to transcribe
             </h3>
             <p className="text-sm max-w-sm mt-1">
-              Select an existing meeting session from the session panel or click
+              Select an existing session from the session panel or click
               &quot;New Session&quot; to start recording and transcribing in
               real-time.
             </p>

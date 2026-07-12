@@ -6,40 +6,68 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { updateConfig } from "../lib/store/slices/configSlice";
-import { Switch } from "@heroui/react";
 
 const SUPPORTED_LANGUAGES = [
+  { code: "af", name: "Afrikaans" },
+  { code: "sq", name: "Albanian" },
+  { code: "ar", name: "Arabic" },
+  { code: "az", name: "Azerbaijani" },
+  { code: "eu", name: "Basque" },
+  { code: "be", name: "Belarusian" },
+  { code: "bn", name: "Bengali" },
+  { code: "bs", name: "Bosnian" },
+  { code: "bg", name: "Bulgarian" },
+  { code: "ca", name: "Catalan" },
+  { code: "zh", name: "Chinese" },
+  { code: "hr", name: "Croatian" },
+  { code: "cs", name: "Czech" },
+  { code: "da", name: "Danish" },
+  { code: "nl", name: "Dutch" },
   { code: "en", name: "English" },
-  { code: "id", name: "Indonesian" },
-  { code: "es", name: "Spanish" },
+  { code: "et", name: "Estonian" },
+  { code: "fi", name: "Finnish" },
   { code: "fr", name: "French" },
+  { code: "gl", name: "Galician" },
   { code: "de", name: "German" },
+  { code: "el", name: "Greek" },
+  { code: "gu", name: "Gujarati" },
+  { code: "he", name: "Hebrew" },
+  { code: "hi", name: "Hindi" },
+  { code: "hu", name: "Hungarian" },
+  { code: "id", name: "Indonesian" },
   { code: "it", name: "Italian" },
   { code: "ja", name: "Japanese" },
+  { code: "kn", name: "Kannada" },
+  { code: "kk", name: "Kazakh" },
   { code: "ko", name: "Korean" },
-  { code: "zh", name: "Chinese" },
-  { code: "ru", name: "Russian" },
-  { code: "pt", name: "Portuguese" },
-  { code: "ar", name: "Arabic" },
-  { code: "hi", name: "Hindi" },
-  { code: "tr", name: "Turkish" },
-  { code: "vi", name: "Vietnamese" },
-  { code: "th", name: "Thai" },
-  { code: "nl", name: "Dutch" },
-  { code: "pl", name: "Polish" },
-  { code: "sv", name: "Swedish" },
-  { code: "da", name: "Danish" },
-  { code: "fi", name: "Finnish" },
-  { code: "no", name: "Norwegian" },
+  { code: "lv", name: "Latvian" },
+  { code: "lt", name: "Lithuanian" },
+  { code: "mk", name: "Macedonian" },
   { code: "ms", name: "Malay" },
-  { code: "tl", name: "Tagalog" },
-  { code: "sw", name: "Swahili" },
-  { code: "he", name: "Hebrew" },
-  { code: "el", name: "Greek" },
-  { code: "cs", name: "Czech" },
+  { code: "ml", name: "Malayalam" },
+  { code: "mr", name: "Marathi" },
+  { code: "no", name: "Norwegian" },
+  { code: "fa", name: "Persian" },
+  { code: "pl", name: "Polish" },
+  { code: "pt", name: "Portuguese" },
+  { code: "pa", name: "Punjabi" },
   { code: "ro", name: "Romanian" },
-  { code: "hu", name: "Hungarian" },
+  { code: "ru", name: "Russian" },
+  { code: "sr", name: "Serbian" },
+  { code: "sk", name: "Slovak" },
+  { code: "sl", name: "Slovenian" },
+  { code: "es", name: "Spanish" },
+  { code: "sw", name: "Swahili" },
+  { code: "sv", name: "Swedish" },
+  { code: "tl", name: "Tagalog" },
+  { code: "ta", name: "Tamil" },
+  { code: "te", name: "Telugu" },
+  { code: "th", name: "Thai" },
+  { code: "tr", name: "Turkish" },
   { code: "uk", name: "Ukrainian" },
+  { code: "ur", name: "Urdu" },
+  { code: "vi", name: "Vietnamese" },
+  { code: "cy", name: "Welsh" },
 ];
 
 const settingsFormSchema = z.object({
@@ -173,7 +201,7 @@ export default function SettingsDrawer({
               <input
                 type={showSonioxKey ? "text" : "password"}
                 {...register("sonioxApiKey")}
-                className="w-full bg-neutral-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
+                className="w-full bg-neutral-800 border border-white/10 rounded-lg pl-4 pr-12 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
                 placeholder="Enter Soniox API Key"
               />
               <button
@@ -200,7 +228,7 @@ export default function SettingsDrawer({
               <input
                 type={showGoogleKey ? "text" : "password"}
                 {...register("googleApiKey")}
-                className="w-full bg-neutral-800 border border-white/10 rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
+                className="w-full bg-neutral-800 border border-white/10 rounded-lg pl-4 pr-12 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
                 placeholder="Enter Gemini API Key"
               />
               <button

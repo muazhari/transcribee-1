@@ -4,7 +4,7 @@ export class AudioCaptureManager {
   private audioContext: AudioContext | null = null;
   private micStream: MediaStream | null = null;
   private speakerStream: MediaStream | null = null;
-  private processorNode: ScriptProcessorNode | null = null;
+  private processorNode: AudioWorkletNode | null = null;
   private micSource: MediaStreamAudioSourceNode | null = null;
   private speakerSource: MediaStreamAudioSourceNode | null = null;
   private sessionId: string | null = null;
@@ -77,11 +77,54 @@ export class AudioCaptureManager {
 
       if (!this.audioContext) {
         throw new Error(
-          "AudioContext was closed before script processor creation.",
+          "AudioContext was closed before audio worklet creation.",
         );
       }
-      // 4096 buffer size at 16kHz is ~256ms
-      this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+      // Inline the AudioWorkletProcessor script
+      const processorCode = `
+        class AudioProcessor extends AudioWorkletProcessor {
+          constructor() {
+            super();
+            this.bufferSize = 4096;
+            this.buffer = new Float32Array(this.bufferSize);
+            this.bufferIndex = 0;
+          }
+
+          process(inputs, outputs, parameters) {
+            const input = inputs[0];
+            if (input && input.length > 0) {
+              const channelData = input[0];
+              if (channelData && channelData.length > 0) {
+                for (let i = 0; i < channelData.length; i++) {
+                  this.buffer[this.bufferIndex] = channelData[i];
+                  this.bufferIndex++;
+                  if (this.bufferIndex >= this.bufferSize) {
+                    this.port.postMessage(this.buffer);
+                    this.buffer = new Float32Array(this.bufferSize);
+                    this.bufferIndex = 0;
+                  }
+                }
+              }
+            }
+            return true;
+          }
+        }
+
+        registerProcessor('audio-processor', AudioProcessor);
+      `;
+
+      const blob = new Blob([processorCode], {
+        type: "application/javascript",
+      });
+      const blobUrl = URL.createObjectURL(blob);
+      await this.audioContext.audioWorklet.addModule(blobUrl);
+      URL.revokeObjectURL(blobUrl);
+
+      this.processorNode = new AudioWorkletNode(
+        this.audioContext,
+        "audio-processor",
+      );
 
       // Connect nodes
       if (this.micSource) {
@@ -93,18 +136,17 @@ export class AudioCaptureManager {
 
       if (!this.audioContext) {
         throw new Error(
-          "AudioContext was closed before connecting script processor destination.",
+          "AudioContext was closed before connecting audio worklet destination.",
         );
       }
       this.processorNode.connect(this.audioContext.destination);
 
-      this.processorNode.onaudioprocess = (event) => {
+      this.processorNode.port.onmessage = (event) => {
         if (this.isPausedCallback && this.isPausedCallback()) {
           return;
         }
 
-        const inputBuffer = event.inputBuffer;
-        const inputData = inputBuffer.getChannelData(0);
+        const inputData = event.data as Float32Array;
 
         // Downsample input from native sample rate to 16kHz (in case contextSampleRate isn't 16000)
         const downsampled = this.downsample(
@@ -142,7 +184,7 @@ export class AudioCaptureManager {
   stop(): void {
     if (this.processorNode) {
       this.processorNode.disconnect();
-      this.processorNode.onaudioprocess = null;
+      this.processorNode.port.onmessage = null;
       this.processorNode = null;
     }
 

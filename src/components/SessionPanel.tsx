@@ -129,7 +129,7 @@ export default function SessionPanel({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-neutral-900 border border-white/10 rounded-lg pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-violet-500 transition-colors"
-            placeholder="Search meetings..."
+            placeholder="Search sessions..."
           />
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 text-sm">
             🔍
@@ -140,7 +140,7 @@ export default function SessionPanel({
       {/* History List */}
       <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
         <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-          Meeting Logs
+          Session Logs
         </h3>
 
         {filteredSessions.length === 0 ? (

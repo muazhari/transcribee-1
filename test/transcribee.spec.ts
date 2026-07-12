@@ -103,19 +103,16 @@ test.beforeEach(async ({ page }) => {
     (window.navigator.mediaDevices as any).getUserMedia = async () => mockStream;
     (window.navigator.mediaDevices as any).getDisplayMedia = async () => mockStream;
 
-    // Mock AudioContext
+    // Mock AudioContext & AudioWorklet
     class MockAudioContext {
       state = "running";
       sampleRate = 16000;
       destination = {};
+      audioWorklet = {
+        addModule: async () => Promise.resolve(),
+      };
 
       createMediaStreamSource() {
-        return {
-          connect: () => {},
-          disconnect: () => {},
-        };
-      }
-      createScriptProcessor() {
         return {
           connect: () => {},
           disconnect: () => {},
@@ -141,8 +138,16 @@ test.beforeEach(async ({ page }) => {
         };
       }
     }
+    class MockAudioWorkletNode {
+      port = {
+        onmessage: null,
+      };
+      connect() {}
+      disconnect() {}
+    }
     (window as any).AudioContext = MockAudioContext;
     (window as any).webkitAudioContext = MockAudioContext;
+    (window as any).AudioWorkletNode = MockAudioWorkletNode;
   });
 });
 

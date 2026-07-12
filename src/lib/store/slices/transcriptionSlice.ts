@@ -75,7 +75,7 @@ export const transcriptionSlice = createSlice({
         const isEnd = transcript.text.includes("<end>");
 
         if (!currentSegment) {
-          if (transcript.text.trim().length > 0 || !isEnd) {
+          if (transcript.text.length > 0 || !isEnd) {
             currentSegment = {
               ...transcript,
               text: transcript.text,
@@ -93,7 +93,7 @@ export const transcriptionSlice = createSlice({
           if (isNewSpeaker || isNewLanguage) {
             segmentTranscripts.push(currentSegment);
             if (isEnd) {
-              if (transcript.text.trim().length > 0) {
+              if (transcript.text.length > 0) {
                 segmentTranscripts.push({
                   ...transcript,
                   text: transcript.text,
@@ -132,7 +132,6 @@ export const transcriptionSlice = createSlice({
 
       // 3. Attach translation transcripts to the matching original segments
       for (const translation of translationTranscripts) {
-        const cleanTranslationText = translation.text.replace("<end>", "");
         const matchingSegment = segmentTranscripts.find(
           (seg) =>
             seg.speakerId === translation.speakerId &&
@@ -141,9 +140,9 @@ export const transcriptionSlice = createSlice({
         );
         if (matchingSegment) {
           if (!matchingSegment.translation) {
-            matchingSegment.translation = cleanTranslationText;
+            matchingSegment.translation = translation.text;
           } else {
-            matchingSegment.translation += " " + cleanTranslationText.trim();
+            matchingSegment.translation += translation.text;
           }
         }
       }
