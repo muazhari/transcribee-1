@@ -236,6 +236,7 @@ export default function Home() {
             sonioxStreamClient.sendAudio(pcmData);
           }
         },
+        () => isPausedRef.current,
       );
     } catch (err: any) {
       console.error("Audio recording setup failed:", err);

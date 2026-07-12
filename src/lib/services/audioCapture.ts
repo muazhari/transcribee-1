@@ -9,6 +9,8 @@ export class AudioCaptureManager {
   private speakerSource: MediaStreamAudioSourceNode | null = null;
   private sessionId: string | null = null;
   private sessionStartTime: number = 0;
+  private recordedSamples: number = 0;
+  private isPausedCallback: (() => boolean) | null = null;
 
   // Callback when mixed 16kHz PCM data is ready
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
@@ -17,12 +19,15 @@ export class AudioCaptureManager {
     sessionId: string,
     routing: "mix" | "mic-only" | "speaker-only",
     onAudioData: (data: Int16Array) => void,
+    isPaused: () => boolean,
   ): Promise<void> {
     if (typeof window === "undefined") return;
 
     this.sessionId = sessionId;
     this.sessionStartTime = Date.now();
     this.onAudioDataCallback = onAudioData;
+    this.isPausedCallback = isPaused;
+    this.recordedSamples = 0;
 
     this.audioContext = new (
       window.AudioContext || (window as any).webkitAudioContext
@@ -94,6 +99,10 @@ export class AudioCaptureManager {
       this.processorNode.connect(this.audioContext.destination);
 
       this.processorNode.onaudioprocess = (event) => {
+        if (this.isPausedCallback && this.isPausedCallback()) {
+          return;
+        }
+
         const inputBuffer = event.inputBuffer;
         const inputData = inputBuffer.getChannelData(0);
 
@@ -112,10 +121,12 @@ export class AudioCaptureManager {
 
         // Save chunk to IndexedDB
         if (this.sessionId) {
-          const elapsedMs = Date.now() - this.sessionStartTime;
+          const chunkStartMs = (this.recordedSamples / 16000) * 1000;
+          this.recordedSamples += pcm16.length;
+
           db.saveAudioChunk({
             sessionId: this.sessionId,
-            startTimestamp: elapsedMs,
+            startTimestamp: chunkStartMs,
             data: pcm16,
           }).catch((err) => {
             console.error("Failed to save audio chunk to DB:", err);
@@ -164,6 +175,8 @@ export class AudioCaptureManager {
 
     this.sessionId = null;
     this.onAudioDataCallback = null;
+    this.isPausedCallback = null;
+    this.recordedSamples = 0;
   }
 
   // Linear box-filter downsampling
@@ -282,15 +295,23 @@ export class AudioCaptureManager {
     // Play snippet
     const playCtx = new (
       window.AudioContext || (window as any).webkitAudioContext
-    )({
-      sampleRate: 16000,
-    });
+    )();
     const buffer = playCtx.createBuffer(1, snippet.length, 16000);
     buffer.copyToChannel(snippet, 0);
 
     const source = playCtx.createBufferSource();
     source.buffer = buffer;
     source.connect(playCtx.destination);
+
+    source.onended = () => {
+      playCtx.close().catch((err) => {
+        console.error(
+          "Failed to close AudioContext after playback ended:",
+          err,
+        );
+      });
+    };
+
     source.start(0);
   }
 }
