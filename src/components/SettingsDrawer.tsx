@@ -75,11 +75,13 @@ const settingsFormSchema = z.object({
   googleApiKey: z.string().min(1, "Google AI API Key is required"),
   aiModel: z.string(),
   transcriptionModel: z.string(),
-  languageHints: z.string().min(1, "At least one language hint is required"),
+  languageHints: z
+    .array(z.string())
+    .min(1, "At least one language hint is required"),
   enableEndpointDetection: z.boolean(),
   enableLanguageIdentification: z.boolean(),
   enableTranslation: z.boolean(),
-  translationTab: z.enum(["one-way", "two-way"]),
+  translationTab: z.enum(["one-way", "two-way", "none"]),
   translationTargetLanguage: z.string(),
   translationLanguageA: z.string(),
   translationLanguageB: z.string(),
@@ -106,6 +108,37 @@ export default function SettingsDrawer({
   const [showLangDropdown, setShowLangDropdown] = useState(false);
   const [hasDisplayMedia, setHasDisplayMedia] = useState(true);
 
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    formState: { errors },
+    reset,
+  } = useForm<SettingsFormValues>({
+    resolver: zodResolver(settingsFormSchema),
+    values: {
+      sonioxApiKey: config.sonioxApiKey,
+      googleApiKey: config.googleApiKey,
+      aiModel: config.aiModel,
+      transcriptionModel: config.transcriptionModel,
+      languageHints: config.languageHints,
+      enableEndpointDetection: config.enableEndpointDetection,
+      enableLanguageIdentification: config.enableLanguageIdentification,
+      enableTranslation: config.translationMode !== "none",
+      translationTab: config.translationMode,
+      translationTargetLanguage: config.translationTargetLanguage,
+      translationLanguageA: config.translationLanguageA,
+      translationLanguageB: config.translationLanguageB,
+      audioRouting: config.audioRouting,
+    },
+  });
+
+  const onCloseHandler = () => {
+    reset();
+    onClose();
+  };
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       setHasDisplayMedia(
@@ -114,44 +147,10 @@ export default function SettingsDrawer({
     }
   }, []);
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    watch,
-    formState: { errors },
-  } = useForm<SettingsFormValues>({
-    resolver: zodResolver(settingsFormSchema),
-    defaultValues: {
-      sonioxApiKey: config.sonioxApiKey,
-      googleApiKey: config.googleApiKey,
-      aiModel: config.aiModel,
-      transcriptionModel: config.transcriptionModel,
-      languageHints: config.languageHints.join(", "),
-      enableEndpointDetection: config.enableEndpointDetection,
-      enableLanguageIdentification: config.enableLanguageIdentification,
-      enableTranslation: config.translationMode !== "none",
-      translationTab:
-        config.translationMode === "two-way" ? "two-way" : "one-way",
-      translationTargetLanguage: config.translationTargetLanguage || "id",
-      translationLanguageA: config.translationLanguageA || "en",
-      translationLanguageB: config.translationLanguageB || "id",
-      audioRouting: config.audioRouting,
-    },
-  });
-
   const enableTranslation = watch("enableTranslation");
   const translationTab = watch("translationTab");
 
   const onSubmit = (values: SettingsFormValues) => {
-    // Parse languageHints string into array
-    const hints = values.languageHints
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const mode = values.enableTranslation ? values.translationTab : "none";
-
     let resolvedAudioRouting = values.audioRouting;
     if (!hasDisplayMedia && resolvedAudioRouting !== "mic-only") {
       resolvedAudioRouting = "mic-only";
@@ -163,17 +162,17 @@ export default function SettingsDrawer({
         googleApiKey: values.googleApiKey,
         aiModel: values.aiModel,
         transcriptionModel: values.transcriptionModel,
-        languageHints: hints,
+        languageHints: values.languageHints,
         enableEndpointDetection: values.enableEndpointDetection,
         enableLanguageIdentification: values.enableLanguageIdentification,
-        translationMode: mode,
+        translationMode: values.translationTab,
         translationTargetLanguage: values.translationTargetLanguage,
         translationLanguageA: values.translationLanguageA,
         translationLanguageB: values.translationLanguageB,
         audioRouting: resolvedAudioRouting,
       }),
     );
-    onClose();
+    onCloseHandler();
   };
 
   if (!isOpen) return null;
@@ -183,7 +182,7 @@ export default function SettingsDrawer({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
-        onClick={onClose}
+        onClick={onCloseHandler}
         aria-hidden="true"
       />
 
@@ -194,7 +193,7 @@ export default function SettingsDrawer({
             System Configurations
           </h2>
           <button
-            onClick={onClose}
+            onClick={onCloseHandler}
             className="p-1 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
             aria-label="Close settings"
           >
@@ -266,49 +265,54 @@ export default function SettingsDrawer({
               <label className="text-sm font-medium text-neutral-300">
                 Gemini Model
               </label>
-              <select
-                {...register("aiModel")}
-                className="w-full bg-neutral-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
-              >
-                <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
-                <option value="gemini-3.1-flash-lite">
-                  Gemini 3.1 Flash Lite
-                </option>
-                <option value="gemini-3.1-pro-preview">
-                  Gemini 3.1 Pro Preview
-                </option>
-              </select>
+              <div className="relative w-full">
+                <select
+                  {...register("aiModel")}
+                  className="w-full bg-neutral-800 border border-white/10 rounded-lg pl-3 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 appearance-none cursor-pointer transition-colors"
+                >
+                  <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                  <option value="gemini-3.1-flash-lite">
+                    Gemini 3.1 Flash Lite
+                  </option>
+                  <option value="gemini-3.1-pro-preview">
+                    Gemini 3.1 Pro Preview
+                  </option>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 text-[10px]">
+                  ▼
+                </div>
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium text-neutral-300">
                 STT Model
               </label>
-              <select
-                {...register("transcriptionModel")}
-                className="w-full bg-neutral-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
-              >
-                <option value="stt-rt-v5">stt-rt-v5</option>
-                <option value="stt-rt-v4">stt-rt-v4</option>
-              </select>
+              <div className="relative w-full">
+                <select
+                  {...register("transcriptionModel")}
+                  className="w-full bg-neutral-800 border border-white/10 rounded-lg pl-3 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 appearance-none cursor-pointer transition-colors"
+                >
+                  <option value="stt-rt-v5">stt-rt-v5</option>
+                  <option value="stt-rt-v4">stt-rt-v4</option>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 text-[10px]">
+                  ▼
+                </div>
+              </div>
             </div>
           </div>
 
           {/* Language Hints */}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-neutral-300">
-              Language hints
+              Language Hints
             </label>
             <Controller
               name="languageHints"
               control={control}
               render={({ field }) => {
-                const selectedCodes = field.value
-                  ? field.value
-                      .split(",")
-                      .map((c) => c.trim())
-                      .filter(Boolean)
-                  : [];
+                const selectedCodes = field.value || [];
 
                 return (
                   <div className="relative w-full">
@@ -340,7 +344,7 @@ export default function SettingsDrawer({
                                 const newCodes = selectedCodes.filter(
                                   (c) => c !== code,
                                 );
-                                field.onChange(newCodes.join(", "));
+                                field.onChange(newCodes);
                               }}
                               className="text-neutral-400 hover:text-white transition-colors cursor-pointer text-xs"
                             >
@@ -377,7 +381,7 @@ export default function SettingsDrawer({
                           onClick={(e) => {
                             e.stopPropagation();
                             setLangQuery("");
-                            field.onChange("");
+                            field.onChange([]);
                           }}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white transition-colors cursor-pointer text-sm"
                           title="Clear all"
@@ -425,7 +429,7 @@ export default function SettingsDrawer({
                                     ...selectedCodes,
                                     lang.code,
                                   ];
-                                  field.onChange(newCodes.join(", "));
+                                  field.onChange(newCodes);
                                   setLangQuery("");
                                   setShowLangDropdown(false);
                                 }}
@@ -487,7 +491,7 @@ export default function SettingsDrawer({
           <div className="flex flex-col gap-4 bg-neutral-800/40 p-4 rounded-xl border border-white/5">
             <div className="flex items-center justify-between border-b border-white/5 pb-2">
               <span className="text-xs font-bold tracking-wider text-neutral-400 uppercase">
-                Translation Settings
+                Translation
               </span>
             </div>
 
@@ -561,14 +565,6 @@ export default function SettingsDrawer({
                                 </option>
                               ))}
                             </select>
-                            <button
-                              type="button"
-                              onClick={() => field.onChange("id")}
-                              className="absolute right-7 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs"
-                              title="Reset to Indonesian"
-                            >
-                              ✕
-                            </button>
                             <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 text-[10px]">
                               ▼
                             </div>
@@ -600,14 +596,6 @@ export default function SettingsDrawer({
                                   </option>
                                 ))}
                               </select>
-                              <button
-                                type="button"
-                                onClick={() => field.onChange("en")}
-                                className="absolute right-7 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs"
-                                title="Reset to English"
-                              >
-                                ✕
-                              </button>
                               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 text-[10px]">
                                 ▼
                               </div>
@@ -638,14 +626,6 @@ export default function SettingsDrawer({
                                   </option>
                                 ))}
                               </select>
-                              <button
-                                type="button"
-                                onClick={() => field.onChange("id")}
-                                className="absolute right-7 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white text-xs"
-                                title="Reset to Indonesian"
-                              >
-                                ✕
-                              </button>
                               <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 text-[10px]">
                                 ▼
                               </div>
@@ -665,20 +645,25 @@ export default function SettingsDrawer({
             <label className="text-sm font-medium text-neutral-300">
               Audio Capture Routing
             </label>
-            <select
-              {...register("audioRouting")}
-              className="w-full bg-neutral-800 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
-            >
-              <option value="mic-only">Microphone Only</option>
-              <option value="speaker-only" disabled={!hasDisplayMedia}>
-                System Speakers Only
-                {!hasDisplayMedia && " (Not supported on this device)"}
-              </option>
-              <option value="mix" disabled={!hasDisplayMedia}>
-                Mix Mic + System Speakers
-                {!hasDisplayMedia && " (Not supported on this device)"}
-              </option>
-            </select>
+            <div className="relative w-full">
+              <select
+                {...register("audioRouting")}
+                className="w-full bg-neutral-800 border border-white/10 rounded-lg pl-3 pr-10 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 appearance-none cursor-pointer transition-colors"
+              >
+                <option value="mic-only">Microphone Only</option>
+                <option value="speaker-only" disabled={!hasDisplayMedia}>
+                  System Speakers Only
+                  {!hasDisplayMedia && " (Not supported on this device)"}
+                </option>
+                <option value="mix" disabled={!hasDisplayMedia}>
+                  Mix Mic + System Speakers
+                  {!hasDisplayMedia && " (Not supported on this device)"}
+                </option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-400 text-[10px]">
+                ▼
+              </div>
+            </div>
           </div>
 
           {/* Save Button */}
