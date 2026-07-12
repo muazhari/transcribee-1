@@ -272,11 +272,16 @@ export class AudioCaptureManager {
   ): Promise<void> {
     if (typeof window === "undefined") return;
 
-    // Get overlapping audio chunks
+    // Add trailing padding so playback doesn't cut off abruptly at the last
+    // token's acoustic boundary. Soniox duration_ms only covers the word
+    // pronunciation; the extra pad captures natural trailing silence/decay.
+    const paddedEndMs = endTimestampMs * 1.3 + 1000;
+
+    // Get overlapping audio chunks (use the padded end to fetch enough data)
     const chunks = await db.getAudioChunksForRange(
       sessionId,
       startTimestampMs,
-      endTimestampMs,
+      paddedEndMs,
     );
     if (chunks.length === 0) {
       console.warn(
@@ -313,14 +318,14 @@ export class AudioCaptureManager {
     // Find the offset of the first chunk
     const firstChunkStart = chunks[0].startTimestamp;
 
-    // Calculate crop positions in samples
+    // Calculate crop positions in samples (use paddedEndMs for the end)
     const cropStartSample = Math.max(
       0,
       Math.round((startTimestampMs - firstChunkStart) * samplesPerMs),
     );
     const cropEndSample = Math.min(
       totalLength,
-      Math.round((endTimestampMs - firstChunkStart) * samplesPerMs),
+      Math.round((paddedEndMs - firstChunkStart) * samplesPerMs),
     );
 
     if (cropStartSample >= cropEndSample) {
