@@ -24,7 +24,7 @@ const initialState: ConfigState = {
   enableEndpointDetection: true,
   enableLanguageIdentification: true,
   translationMode: "none",
-  audioRouting: "mix",
+  audioRouting: "mic-only",
   translationTargetLanguage: "id",
   translationLanguageA: "en",
   translationLanguageB: "id",
