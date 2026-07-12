@@ -1,0 +1,35 @@
+datasource db {
+  provider = "postgresql"
+  url      = "file:local.db"
+}
+
+model Session {
+  id             String          @id @default(uuid())
+  createdAt      DateTime        @default(now())
+  title          String?
+  audioBlobPath  String          // Reference path pointing to browser local storage index
+  transcripts    Transcript[]
+  qnaPairs       QnAPair[]
+}
+
+model Transcript {
+  id             String          @id @default(uuid())
+  sessionId      String
+  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  speakerId      String          // Diarization identity mapping ("Speaker 1", "Speaker 2")
+  text           String          // Original localized text content
+  isFinal        Boolean         // Whether the text is final or not
+  translation    String?         // Outgoing target language translation block if enabled
+  startTimestamp Int             // Start point offset in milliseconds from session initialization
+  endTimestamp   Int             // End point offset in milliseconds from session initialization
+  duration       Int             // Duration of the transcription segment in milliseconds
+}
+
+model QnAPair {
+  id             String          @id @default(uuid())
+  sessionId      String
+  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question       String
+  answer         String
+  timestamp      DateTime        @default(now())
+}

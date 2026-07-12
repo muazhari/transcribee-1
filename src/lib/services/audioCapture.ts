@@ -1,0 +1,298 @@
+import { db } from "./db";
+
+export class AudioCaptureManager {
+  private audioContext: AudioContext | null = null;
+  private micStream: MediaStream | null = null;
+  private speakerStream: MediaStream | null = null;
+  private processorNode: ScriptProcessorNode | null = null;
+  private micSource: MediaStreamAudioSourceNode | null = null;
+  private speakerSource: MediaStreamAudioSourceNode | null = null;
+  private sessionId: string | null = null;
+  private sessionStartTime: number = 0;
+
+  // Callback when mixed 16kHz PCM data is ready
+  private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
+
+  async start(
+    sessionId: string,
+    routing: "mix" | "mic-only" | "speaker-only",
+    onAudioData: (data: Int16Array) => void,
+  ): Promise<void> {
+    if (typeof window === "undefined") return;
+
+    this.sessionId = sessionId;
+    this.sessionStartTime = Date.now();
+    this.onAudioDataCallback = onAudioData;
+
+    this.audioContext = new (
+      window.AudioContext || (window as any).webkitAudioContext
+    )({
+      sampleRate: 16000, // Request 16kHz context if browser supports it
+    });
+
+    const contextSampleRate = this.audioContext.sampleRate;
+
+    try {
+      const getMic = routing === "mix" || routing === "mic-only";
+      const getSpeaker = routing === "mix" || routing === "speaker-only";
+
+      if (getMic) {
+        this.micStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+          },
+          video: false,
+        });
+        if (!this.audioContext) {
+          throw new Error(
+            "AudioContext was closed during microphone initialization.",
+          );
+        }
+        this.micSource = this.audioContext.createMediaStreamSource(
+          this.micStream,
+        );
+      }
+
+      if (getSpeaker) {
+        // Capture screen/tab audio loopback
+        this.speakerStream = await navigator.mediaDevices.getDisplayMedia({
+          audio: true,
+          video: { width: 1, height: 1 },
+        });
+        if (!this.audioContext) {
+          throw new Error(
+            "AudioContext was closed during speaker initialization.",
+          );
+        }
+        this.speakerSource = this.audioContext.createMediaStreamSource(
+          this.speakerStream,
+        );
+      }
+
+      if (!this.audioContext) {
+        throw new Error(
+          "AudioContext was closed before script processor creation.",
+        );
+      }
+      // 4096 buffer size at 16kHz is ~256ms
+      this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+      // Connect nodes
+      if (this.micSource) {
+        this.micSource.connect(this.processorNode);
+      }
+      if (this.speakerSource) {
+        this.speakerSource.connect(this.processorNode);
+      }
+
+      if (!this.audioContext) {
+        throw new Error(
+          "AudioContext was closed before connecting script processor destination.",
+        );
+      }
+      this.processorNode.connect(this.audioContext.destination);
+
+      this.processorNode.onaudioprocess = (event) => {
+        const inputBuffer = event.inputBuffer;
+        const inputData = inputBuffer.getChannelData(0);
+
+        // Downsample input from native sample rate to 16kHz (in case contextSampleRate isn't 16000)
+        const downsampled = this.downsample(
+          inputData,
+          contextSampleRate,
+          16000,
+        );
+        const pcm16 = this.floatTo16BitPCM(downsampled);
+
+        // Send to WebSocket callback
+        if (this.onAudioDataCallback) {
+          this.onAudioDataCallback(pcm16);
+        }
+
+        // Save chunk to IndexedDB
+        if (this.sessionId) {
+          const elapsedMs = Date.now() - this.sessionStartTime;
+          db.saveAudioChunk({
+            sessionId: this.sessionId,
+            startTimestamp: elapsedMs,
+            data: pcm16,
+          }).catch((err) => {
+            console.error("Failed to save audio chunk to DB:", err);
+          });
+        }
+      };
+    } catch (error) {
+      this.stop();
+      throw error;
+    }
+  }
+
+  stop(): void {
+    if (this.processorNode) {
+      this.processorNode.disconnect();
+      this.processorNode.onaudioprocess = null;
+      this.processorNode = null;
+    }
+
+    if (this.micSource) {
+      this.micSource.disconnect();
+      this.micSource = null;
+    }
+
+    if (this.speakerSource) {
+      this.speakerSource.disconnect();
+      this.speakerSource = null;
+    }
+
+    if (this.micStream) {
+      this.micStream.getTracks().forEach((track) => track.stop());
+      this.micStream = null;
+    }
+
+    if (this.speakerStream) {
+      this.speakerStream.getTracks().forEach((track) => track.stop());
+      this.speakerStream = null;
+    }
+
+    if (this.audioContext) {
+      if (this.audioContext.state !== "closed") {
+        this.audioContext.close();
+      }
+      this.audioContext = null;
+    }
+
+    this.sessionId = null;
+    this.onAudioDataCallback = null;
+  }
+
+  // Linear box-filter downsampling
+  private downsample(
+    buffer: Float32Array,
+    inputSampleRate: number,
+    outputSampleRate: number,
+  ): Float32Array {
+    if (inputSampleRate === outputSampleRate) {
+      return buffer;
+    }
+    const sampleRateRatio = inputSampleRate / outputSampleRate;
+    const newLength = Math.round(buffer.length / sampleRateRatio);
+    const result = new Float32Array(newLength);
+    let offsetResult = 0;
+    let offsetBuffer = 0;
+    while (offsetResult < result.length) {
+      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
+      let accum = 0;
+      let count = 0;
+      for (
+        let i = offsetBuffer;
+        i < nextOffsetBuffer && i < buffer.length;
+        i++
+      ) {
+        accum += buffer[i];
+        count++;
+      }
+      result[offsetResult] = count > 0 ? accum / count : 0;
+      offsetResult++;
+      offsetBuffer = nextOffsetBuffer;
+    }
+    return result;
+  }
+
+  // Convert Float32Array [-1.0, 1.0] to Int16Array PCM
+  private floatTo16BitPCM(input: Float32Array): Int16Array {
+    const output = new Int16Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+      const s = Math.max(-1, Math.min(1, input[i]));
+      output[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return output;
+  }
+
+  // Play exact token slice from DB
+  static async playTokenAudio(
+    sessionId: string,
+    startTimestampMs: number,
+    endTimestampMs: number,
+  ): Promise<void> {
+    if (typeof window === "undefined") return;
+
+    // Get overlapping audio chunks
+    const chunks = await db.getAudioChunksForRange(
+      sessionId,
+      startTimestampMs,
+      endTimestampMs,
+    );
+    if (chunks.length === 0) {
+      console.warn(
+        "No audio chunks found for playback in range",
+        startTimestampMs,
+        endTimestampMs,
+      );
+      return;
+    }
+
+    // Concatenate all matching chunks
+    let totalLength = 0;
+    chunks.forEach((c) => {
+      totalLength += c.data.length;
+    });
+
+    const combinedInt16 = new Int16Array(totalLength);
+    let offset = 0;
+    chunks.forEach((c) => {
+      combinedInt16.set(c.data, offset);
+      offset += c.data.length;
+    });
+
+    // Convert back to Float32 range [-1.0, 1.0]
+    const combinedFloat32 = new Float32Array(totalLength);
+    for (let i = 0; i < totalLength; i++) {
+      combinedFloat32[i] = combinedInt16[i] / 32768.0;
+    }
+
+    // Determine sample rate and offsets
+    const sampleRate = 16000;
+    const samplesPerMs = sampleRate / 1000; // 16 samples/ms
+
+    // Find the offset of the first chunk
+    const firstChunkStart = chunks[0].startTimestamp;
+
+    // Calculate crop positions in samples
+    const cropStartSample = Math.max(
+      0,
+      Math.round((startTimestampMs - firstChunkStart) * samplesPerMs),
+    );
+    const cropEndSample = Math.min(
+      totalLength,
+      Math.round((endTimestampMs - firstChunkStart) * samplesPerMs),
+    );
+
+    if (cropStartSample >= cropEndSample) {
+      console.warn(
+        "Crop range is empty or invalid",
+        cropStartSample,
+        cropEndSample,
+      );
+      return;
+    }
+
+    const snippet = combinedFloat32.subarray(cropStartSample, cropEndSample);
+
+    // Play snippet
+    const playCtx = new (
+      window.AudioContext || (window as any).webkitAudioContext
+    )({
+      sampleRate: 16000,
+    });
+    const buffer = playCtx.createBuffer(1, snippet.length, 16000);
+    buffer.copyToChannel(snippet, 0);
+
+    const source = playCtx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(playCtx.destination);
+    source.start(0);
+  }
+}
+
+export const audioCaptureManager = new AudioCaptureManager();
