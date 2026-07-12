@@ -107,26 +107,31 @@ export default function TranscriptPanel({
   return (
     <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
       {/* Session Title Header */}
-      <div className="p-6 border-b border-white/10 flex items-center justify-between gap-5">
-        <div className="flex flex-col gap-1 min-w-0 flex-1">
-          {activeSession ? (
-            <input
-              type="text"
-              value={activeSession.title || ""}
-              onChange={(e) => onRenameSession(e.target.value)}
-              placeholder={`Session - ${new Date(activeSession.createdAt).toLocaleDateString()}`}
-              className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 w-full text-white placeholder-neutral-500 transition-colors"
-            />
-          ) : (
-            <span className="text-lg font-bold text-neutral-400">
-              No session loaded
-            </span>
-          )}
-          <div className="flex items-center gap-4 text-xs text-neutral-400">
+      <div className="px-6 pt-5 pb-4 border-b border-white/10 flex flex-col gap-3">
+        {/* Title + status row */}
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+            {activeSession ? (
+              <input
+                type="text"
+                value={activeSession.title || ""}
+                onChange={(e) => onRenameSession(e.target.value)}
+                placeholder={`Session - ${new Date(activeSession.createdAt).toLocaleDateString()}`}
+                className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 w-full text-white placeholder-neutral-500 transition-colors truncate"
+              />
+            ) : (
+              <span className="text-lg font-bold text-neutral-400">
+                No session loaded
+              </span>
+            )}
+          </div>
+
+          {/* Status badges */}
+          <div className="flex items-center gap-3 text-xs text-neutral-400 shrink-0">
             {isRecording && (
               <span className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-                <span className="text-red-400 font-semibold">Recording</span>
+                <span className="text-red-400 font-semibold">REC</span>
               </span>
             )}
             {isPaused && (
@@ -147,16 +152,16 @@ export default function TranscriptPanel({
           </div>
         </div>
 
-        {/* Token capacity metrics */}
+        {/* Token capacity meter — full width, always below title */}
         {activeSession && (
-          <div className="flex flex-col items-end gap-1.5 max-w-[200px] w-full">
-            <div className="flex justify-between w-full text-[10px] text-neutral-400 font-semibold">
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between text-[10px] text-neutral-400 font-semibold">
               <span>Token Load</span>
               <span>
                 {tokenCount.toLocaleString()} / {tokenLimit.toLocaleString()}
               </span>
             </div>
-            <div className="w-full h-2 bg-neutral-800 rounded-full overflow-hidden border border-white/5">
+            <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden border border-white/5">
               <div
                 className={`h-full rounded-full transition-all duration-300 ${
                   tokenPercentage >= 85
