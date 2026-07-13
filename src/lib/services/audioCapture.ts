@@ -9,6 +9,7 @@ export class AudioCaptureManager {
   private speakerSource: MediaStreamAudioSourceNode | null = null;
   private sessionId: string | null = null;
   private recordedSamples: number = 0;
+  private timestampOffsetMs: number = 0;
   private isPausedCallback: (() => boolean) | null = null;
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
 
@@ -17,6 +18,7 @@ export class AudioCaptureManager {
     routing: "mix" | "mic-only" | "speaker-only",
     onAudioData: (data: Int16Array) => void,
     isPaused: () => boolean,
+    timestampOffsetMs: number = 0,
   ): Promise<void> {
     if (typeof window === "undefined") return;
 
@@ -27,6 +29,7 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = onAudioData;
     this.isPausedCallback = isPaused;
     this.recordedSamples = 0;
+    this.timestampOffsetMs = timestampOffsetMs;
 
     // Create the AudioContext. Request 16kHz context if browser supports it.
     const AudioContextClass =
@@ -149,7 +152,7 @@ export class AudioCaptureManager {
         this.onAudioDataCallback?.(pcm16);
 
         if (this.sessionId) {
-          const chunkStartMs = (this.recordedSamples / 16000) * 1000;
+          const chunkStartMs = (this.recordedSamples / 16000) * 1000 + this.timestampOffsetMs;
           this.recordedSamples += pcm16.length;
 
           db.saveAudioChunk({
@@ -200,6 +203,7 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = null;
     this.isPausedCallback = null;
     this.recordedSamples = 0;
+    this.timestampOffsetMs = 0;
   }
 
   // Linear box-filter downsampling

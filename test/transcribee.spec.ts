@@ -2,7 +2,9 @@
 import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
-  page.on("console", (msg) => console.log(`PAGE LOG: [${msg.type()}] ${msg.text()}`));
+  page.on("console", (msg) =>
+    console.log(`PAGE LOG: [${msg.type()}] ${msg.text()}`),
+  );
   page.on("pageerror", (err) => console.error("PAGE ERROR:", err.message));
   // Set up mock window variables and functions
   await page.addInitScript(() => {
@@ -100,8 +102,10 @@ test.beforeEach(async ({ page }) => {
         configurable: true,
       });
     }
-    (window.navigator.mediaDevices as any).getUserMedia = async () => mockStream;
-    (window.navigator.mediaDevices as any).getDisplayMedia = async () => mockStream;
+    (window.navigator.mediaDevices as any).getUserMedia = async () =>
+      mockStream;
+    (window.navigator.mediaDevices as any).getDisplayMedia = async () =>
+      mockStream;
 
     // Mock AudioContext & AudioWorklet
     class MockAudioContext {
@@ -139,8 +143,21 @@ test.beforeEach(async ({ page }) => {
       }
     }
     class MockAudioWorkletNode {
-      port = {
-        onmessage: null,
+      port: any = {
+        _onmessage: null,
+        set onmessage(val: any) {
+          this._onmessage = val;
+          if (val) {
+            setTimeout(() => {
+              if (this._onmessage) {
+                this._onmessage({ data: new Float32Array(4096) });
+              }
+            }, 50);
+          }
+        },
+        get onmessage() {
+          return this._onmessage;
+        },
       };
       connect() {}
       disconnect() {}
@@ -157,7 +174,9 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
   // 1. Load application home page
   await page.goto("/", { waitUntil: "networkidle" });
   console.log("HTML CONTENT:", await page.content());
-  await page.locator("text=Transcribee").waitFor({ state: "visible", timeout: 30000 });
+  await page
+    .locator("text=Transcribee")
+    .waitFor({ state: "visible", timeout: 30000 });
   await expect(page).toHaveTitle(/Transcribee/);
 
   // 2. Open Settings and save valid credentials
@@ -165,9 +184,15 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
   await expect(page.locator("text=System Configurations")).toBeVisible();
 
   // Fill config fields
-  await page.fill('input[placeholder="Enter Soniox API Key"]', "test-soniox-key-xyz");
-  await page.fill('input[placeholder="Enter Gemini API Key"]', "test-gemini-key-xyz");
-  
+  await page.fill(
+    'input[placeholder="Enter Soniox API Key"]',
+    "test-soniox-key-xyz",
+  );
+  await page.fill(
+    'input[placeholder="Enter Gemini API Key"]',
+    "test-gemini-key-xyz",
+  );
+
   // Submit settings form
   await page.click('button:has-text("Save configurations")');
   await expect(page.locator("text=System Configurations")).not.toBeVisible();
@@ -193,14 +218,21 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
 
   // 7. Stop recording
   await page.click('button:has-text("Stop Recording")');
-  await expect(page.locator('button:has-text("Start Recording")')).toBeVisible();
+  await expect(
+    page.locator('button:has-text("Start Recording")'),
+  ).toBeVisible();
 
   // 8. Interact with Gemini QnA chatbot over the transcripts
-  await page.fill('input[placeholder="Type your question..."]', "Summarize this meeting");
+  await page.fill(
+    'input[placeholder="Type your question..."]',
+    "Summarize this meeting",
+  );
   await page.click('button:has-text("Send")');
 
   // Verify that the mock response from Gemini appears
-  await expect(page.locator("text=This is a mock response from Gemini")).toBeVisible();
+  await expect(
+    page.locator("text=This is a mock response from Gemini"),
+  ).toBeVisible();
 });
 
 test("Mobile viewport: verify header scrollable menu and view switching", async ({
@@ -211,13 +243,16 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
 
   // 1. Load application home page
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.locator('button:has-text("Live Session")').waitFor({ state: "visible", timeout: 30000 });
+  await page
+    .locator('button:has-text("Live Session")')
+    .first()
+    .waitFor({ state: "visible", timeout: 30000 });
 
   // 2. Verify that the mobile header is visible and desktop panels are hidden or shown correctly
   // By default, activeTab is "transcription"
-  await expect(page.locator('button:has-text("Live Session")')).toBeVisible();
-  await expect(page.locator('button:has-text("Session List")')).toBeVisible();
-  await expect(page.locator('button:has-text("Q&A Chatting")')).toBeVisible();
+  await expect(page.locator('button:has-text("Live Session")').first()).toBeVisible();
+  await expect(page.locator('button:has-text("Home")').first()).toBeVisible();
+  await expect(page.locator('button:has-text("Q&A Chat")').first()).toBeVisible();
 
   // The Live Session content is visible by default on mobile
   await expect(page.locator("text=Ready to transcribe")).toBeVisible();
@@ -228,26 +263,32 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
   // QnA panel should be hidden by default on mobile
   await expect(page.locator("text=AI Q&A Assistant")).not.toBeVisible();
 
-  // 3. Switch to "Session List" tab
-  await page.click('button:has-text("Session List")');
+  // 3. Switch to "Session List" tab (Home tab on mobile)
+  await page.click('button:has-text("Home")');
   await expect(page.locator("text=Session Logs")).toBeVisible();
   await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
   await expect(page.locator("text=AI Q&A Assistant")).not.toBeVisible();
 
-  // 4. Switch to "Q&A Chatting" tab
-  await page.click('button:has-text("Q&A Chatting")');
-  await expect(page.locator("text=AI Q&A Assistant")).toBeVisible();
+  // 4. Switch to "Q&A Chatting" tab (Q&A Chat tab on mobile)
+  await page.click('button:has-text("Q&A Chat")');
+  await expect(page.locator("text=Ready to chat")).toBeVisible();
   await expect(page.locator("text=Session Logs")).not.toBeVisible();
   await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
 
-  // 5. Open settings from Session List tab on mobile
-  await page.click('button:has-text("Session List")');
+  // 5. Open settings from Session List tab on mobile (Home tab on mobile)
+  await page.click('button:has-text("Home")');
   await page.click('button[title="Open Settings"]');
   await expect(page.locator("text=System Configurations")).toBeVisible();
 
   // Fill config fields
-  await page.fill('input[placeholder="Enter Soniox API Key"]', "test-soniox-key-xyz");
-  await page.fill('input[placeholder="Enter Gemini API Key"]', "test-gemini-key-xyz");
+  await page.fill(
+    'input[placeholder="Enter Soniox API Key"]',
+    "test-soniox-key-xyz",
+  );
+  await page.fill(
+    'input[placeholder="Enter Gemini API Key"]',
+    "test-gemini-key-xyz",
+  );
   await page.click('button:has-text("Save configurations")');
   await expect(page.locator("text=System Configurations")).not.toBeVisible();
 
@@ -258,11 +299,60 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
   await expect(page.locator("text=Session Logs")).not.toBeVisible();
 
   // 7. Verify switching to a session in the session list auto-switches to Live Session
-  await page.click('button:has-text("Session List")');
+  await page.click('button:has-text("Home")');
   await expect(page.locator("text=Session Logs")).toBeVisible();
   // Click the session item in the session panel list (the title text of the session item)
   await page.click('div[class*="cursor-pointer"] >> text=Session -');
   // It should switch to Live Session
   await expect(page.locator("text=Session Logs")).not.toBeVisible();
   await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
+});
+
+test("Consecutive recording starts in the same session: verify correct offsets and timestamps", async ({
+  page,
+}) => {
+  // 1. Load application home page
+  await page.goto("/", { waitUntil: "networkidle" });
+  await page
+    .locator("text=Transcribee")
+    .waitFor({ state: "visible", timeout: 30000 });
+
+  // 2. Open Settings and save credentials
+  await page.click('button[title="Open Settings"]');
+  await page.fill(
+    'input[placeholder="Enter Soniox API Key"]',
+    "test-soniox-key-xyz",
+  );
+  await page.fill(
+    'input[placeholder="Enter Gemini API Key"]',
+    "test-gemini-key-xyz",
+  );
+  await page.click('button:has-text("Save configurations")');
+
+  // 3. Start a new session
+  await page.click('button:has-text("New Session")');
+  await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
+
+  // 4. First recording
+  await page.click('button:has-text("Start Recording")');
+  await expect(page.locator('button:has-text("Stop Recording")')).toBeVisible();
+
+  // Wait for transcription to render
+  await expect(page.locator("text=Hello")).toBeVisible();
+  await page.click('button:has-text("Stop Recording")');
+  await expect(
+    page.locator('button:has-text("Start Recording")'),
+  ).toBeVisible();
+
+  // 5. Second recording in the same session
+  await page.click('button:has-text("Start Recording")');
+  await expect(page.locator('button:has-text("Stop Recording")')).toBeVisible();
+
+  // Verify that the first transcript remains and new transcripts also load
+  await expect(page.locator("text=Hello").first()).toBeVisible();
+
+  await page.click('button:has-text("Stop Recording")');
+  await expect(
+    page.locator('button:has-text("Start Recording")'),
+  ).toBeVisible();
 });

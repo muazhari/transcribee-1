@@ -346,7 +346,7 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   // 6. Capture mobile layout
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.locator('button:has-text("Live Session")').waitFor({ state: "visible", timeout: 30000 });
+  await page.locator('button:has-text("Live Session")').first().waitFor({ state: "visible", timeout: 30000 });
   
   // Show active mobile tab "Live Session" with the content
   await page.waitForTimeout(500);

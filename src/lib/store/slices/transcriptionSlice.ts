@@ -52,6 +52,8 @@ export const transcriptionSlice = createSlice({
     },
     setTranscripts: (state, action: PayloadAction<Transcript[]>) => {
       state.transcripts = action.payload;
+      state.finalTranscripts = action.payload;
+      state.nonFinalTranscripts = [];
     },
     clearTranscripts: (state) => {
       state.transcripts = [];
