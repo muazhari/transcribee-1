@@ -283,7 +283,7 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   
   // Fill settings with visible placeholder credentials
   await page.fill('input[placeholder="Enter Soniox API Key"]', "soniox_api_key_demo_value_12345");
-  await page.fill('input[placeholder="Enter Gemini API Key"]', "gemini_api_key_demo_value_67890");
+  await page.fill('input[placeholder="Enter Google AI API Key"]', "gemini_api_key_demo_value_67890");
   
   // Wait a moment for drawer transition
   await page.waitForTimeout(500);

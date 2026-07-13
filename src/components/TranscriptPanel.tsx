@@ -402,7 +402,7 @@ export default function TranscriptPanel({
                       <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
                         Translation
                       </span>
-                      <p className="text-sm text-neutral-400 italic">
+                      <p className="text-sm text-neutral-400">
                         {transcript.translation}
                       </p>
                     </div>

@@ -189,7 +189,7 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
     "test-soniox-key-xyz",
   );
   await page.fill(
-    'input[placeholder="Enter Gemini API Key"]',
+    'input[placeholder="Enter Google AI API Key"]',
     "test-gemini-key-xyz",
   );
 
@@ -207,7 +207,7 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
 
   // 5. Verify live transcription tokens and translation render correctly
   // Expect speaker header and transcript words to appear
-  await expect(page.locator("text=Speaker 1")).toBeVisible();
+  await expect(page.locator("text=Speaker 1").first()).toBeVisible();
   await expect(page.locator("text=Hello")).toBeVisible();
   await expect(page.locator("text=world")).toBeVisible();
   // Expect translation text to appear
@@ -286,7 +286,7 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
     "test-soniox-key-xyz",
   );
   await page.fill(
-    'input[placeholder="Enter Gemini API Key"]',
+    'input[placeholder="Enter Google AI API Key"]',
     "test-gemini-key-xyz",
   );
   await page.click('button:has-text("Save configurations")');
@@ -324,7 +324,7 @@ test("Consecutive recording starts in the same session: verify correct offsets a
     "test-soniox-key-xyz",
   );
   await page.fill(
-    'input[placeholder="Enter Gemini API Key"]',
+    'input[placeholder="Enter Google AI API Key"]',
     "test-gemini-key-xyz",
   );
   await page.click('button:has-text("Save configurations")');

@@ -16,28 +16,10 @@ const initialState: TranscriptionState = {
 };
 
 const splitSentences = (text: string): string[] => {
-  const sentences: string[] = [];
-  let current = "";
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    current += char;
-    if (/[.?!。？！]/.test(char)) {
-      const nextChar = text[i + 1];
-      if (
-        i === text.length - 1 ||
-        /[。？！]/.test(char) ||
-        /\s/.test(nextChar) ||
-        /[A-Z]/.test(nextChar)
-      ) {
-        sentences.push(current.trim());
-        current = "";
-      }
-    }
-  }
-  if (current.trim()) {
-    sentences.push(current.trim());
-  }
-  return sentences;
+  return text
+    .split(/(?<=[.?!])\s+|(?<=[。？！])\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
 };
 
 export const transcriptionSlice = createSlice({
@@ -88,10 +70,10 @@ export const transcriptionSlice = createSlice({
 
       // 1. Separate original and translation tokens
       const originalTokens = transcripts.filter(
-        (t) => t.translationStatus !== "translation"
+        (t) => t.translationStatus !== "translation",
       );
       const translationTokens = transcripts.filter(
-        (t) => t.translationStatus === "translation"
+        (t) => t.translationStatus === "translation",
       );
 
       const segmentTranscripts: Transcript[] = [];
@@ -122,8 +104,7 @@ export const transcriptionSlice = createSlice({
         } else {
           const isNewSpeaker =
             transcript.speakerId !== currentSegment.speakerId;
-          const isNewLanguage =
-            transcript.language !== currentSegment.language;
+          const isNewLanguage = transcript.language !== currentSegment.language;
 
           if (isNewSpeaker || isNewLanguage) {
             if (currentSegment.text.trim().length > 0) {

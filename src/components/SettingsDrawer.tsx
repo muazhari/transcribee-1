@@ -236,14 +236,14 @@ export default function SettingsDrawer({
           {/* Google AI API Key */}
           <div className="flex flex-col gap-2">
             <label className="text-sm font-medium text-neutral-300">
-              Google Gemini API Key
+              Google AI API Key
             </label>
             <div className="relative">
               <input
                 type={showGoogleKey ? "text" : "password"}
                 {...register("googleApiKey")}
                 className="w-full bg-neutral-800 border border-white/10 rounded-lg pl-4 pr-12 py-2.5 text-sm text-white focus:outline-none focus:border-violet-500 transition-colors"
-                placeholder="Enter Gemini API Key"
+                placeholder="Enter Google AI API Key"
               />
               <button
                 type="button"
