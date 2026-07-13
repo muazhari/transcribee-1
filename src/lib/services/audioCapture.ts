@@ -9,7 +9,7 @@ export class AudioCaptureManager {
   private speakerSource: MediaStreamAudioSourceNode | null = null;
   private sessionId: string | null = null;
   private recordedSamples: number = 0;
-  private timestampOffsetMs: number = 0;
+  private offsetTimestamp: number = 0;
   private isPausedCallback: (() => boolean) | null = null;
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
 
@@ -18,7 +18,7 @@ export class AudioCaptureManager {
     routing: "mix" | "mic-only" | "speaker-only",
     onAudioData: (data: Int16Array) => void,
     isPaused: () => boolean,
-    timestampOffsetMs: number = 0,
+    offsetTimestamp: number = 0,
   ): Promise<void> {
     if (typeof window === "undefined") return;
 
@@ -29,7 +29,7 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = onAudioData;
     this.isPausedCallback = isPaused;
     this.recordedSamples = 0;
-    this.timestampOffsetMs = timestampOffsetMs;
+    this.offsetTimestamp = offsetTimestamp;
 
     // Create the AudioContext. Request 16kHz context if browser supports it.
     const AudioContextClass =
@@ -152,7 +152,8 @@ export class AudioCaptureManager {
         this.onAudioDataCallback?.(pcm16);
 
         if (this.sessionId) {
-          const chunkStartMs = (this.recordedSamples / 16000) * 1000 + this.timestampOffsetMs;
+          const chunkStartMs =
+            (this.recordedSamples / 16000) * 1000 + this.offsetTimestamp;
           this.recordedSamples += pcm16.length;
 
           db.saveAudioChunk({
@@ -203,7 +204,7 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = null;
     this.isPausedCallback = null;
     this.recordedSamples = 0;
-    this.timestampOffsetMs = 0;
+    this.offsetTimestamp = 0;
   }
 
   // Linear box-filter downsampling
@@ -339,7 +340,9 @@ export class AudioCaptureManager {
     }
   }
 
-  static async getSessionAudioWavUrl(sessionId: string): Promise<string | null> {
+  static async getSessionAudioWavUrl(
+    sessionId: string,
+  ): Promise<string | null> {
     const chunks = await db.getSessionAudioChunks(sessionId);
     if (chunks.length === 0) return null;
 
@@ -358,7 +361,10 @@ export class AudioCaptureManager {
     return URL.createObjectURL(wavBlob);
   }
 
-  private static encodeWav(samples: Int16Array, sampleRate: number): ArrayBuffer {
+  private static encodeWav(
+    samples: Int16Array,
+    sampleRate: number,
+  ): ArrayBuffer {
     const buffer = new ArrayBuffer(44 + samples.length * 2);
     const view = new DataView(buffer);
     this.writeString(view, 0, "RIFF");

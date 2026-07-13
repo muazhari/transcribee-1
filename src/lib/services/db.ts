@@ -17,6 +17,7 @@ export interface Transcript {
   translationStatus?: "original" | "translation";
   translation?: string;
   language: string;
+  offsetTimestamp?: number;
 }
 
 export interface QnAPair {
@@ -224,7 +225,8 @@ class TranscribeeDB {
       const cursorRequest = index.openCursor(IDBKeyRange.only(sessionId));
 
       cursorRequest.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>)
+          .result;
         if (cursor) {
           cursor.delete();
           cursor.continue();

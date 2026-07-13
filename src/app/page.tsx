@@ -180,12 +180,12 @@ export default function Home() {
 
     try {
       // Calculate timestamp offset if there is existing recording data
-      let timestampOffsetMs = 0;
+      let offsetTimestamp = 0;
       const chunks = await db.getSessionAudioChunks(activeSession.id);
       if (chunks.length > 0) {
         const lastChunk = chunks[chunks.length - 1];
         const lastChunkDurationMs = lastChunk.data.length / 16;
-        timestampOffsetMs = lastChunk.startTimestamp + lastChunkDurationMs;
+        offsetTimestamp = lastChunk.startTimestamp + lastChunkDurationMs;
       }
 
       // Connect to Soniox STT WebSocket
@@ -232,14 +232,17 @@ export default function Home() {
                   sessionId: activeSession.id,
                   text: t.text,
                   speakerId: t.speaker,
-                  startTimestamp: t.start_ms + timestampOffsetMs,
-                  endTimestamp: (t.end_ms ?? t.start_ms + (t.duration_ms ?? 0)) + timestampOffsetMs,
+                  startTimestamp: t.start_ms + offsetTimestamp,
+                  endTimestamp:
+                    (t.end_ms ?? t.start_ms + (t.duration_ms ?? 0)) +
+                    offsetTimestamp,
                   duration:
                     t.duration_ms ??
                     (t.end_ms !== undefined ? t.end_ms - t.start_ms : 0),
                   isFinal: t.is_final,
                   translationStatus: t.translation_status,
                   language: t.language,
+                  offsetTimestamp: offsetTimestamp,
                 })),
               ),
             );
@@ -258,7 +261,7 @@ export default function Home() {
           }
         },
         () => isPausedRef.current,
-        timestampOffsetMs,
+        offsetTimestamp,
       );
     } catch (err: unknown) {
       console.error("Audio recording setup failed:", err);
