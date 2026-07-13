@@ -8,11 +8,8 @@ export class AudioCaptureManager {
   private micSource: MediaStreamAudioSourceNode | null = null;
   private speakerSource: MediaStreamAudioSourceNode | null = null;
   private sessionId: string | null = null;
-  private sessionStartTime: number = 0;
   private recordedSamples: number = 0;
   private isPausedCallback: (() => boolean) | null = null;
-
-  // Callback when mixed 16kHz PCM data is ready
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
 
   async start(
@@ -23,30 +20,28 @@ export class AudioCaptureManager {
   ): Promise<void> {
     if (typeof window === "undefined") return;
 
+    // Prevent multiple concurrent sessions/resource leaks
+    this.stop();
+
     this.sessionId = sessionId;
-    this.sessionStartTime = Date.now();
     this.onAudioDataCallback = onAudioData;
     this.isPausedCallback = isPaused;
     this.recordedSamples = 0;
 
-    this.audioContext = new (
-      window.AudioContext || (window as any).webkitAudioContext
-    )({
-      sampleRate: 16000, // Request 16kHz context if browser supports it
-    });
-
+    // Create the AudioContext. Request 16kHz context if browser supports it.
+    const AudioContextClass =
+      window.AudioContext || (window as any).webkitAudioContext;
+    this.audioContext = new AudioContextClass({ sampleRate: 16000 });
     const contextSampleRate = this.audioContext.sampleRate;
 
     try {
       const getMic = routing === "mix" || routing === "mic-only";
       const getSpeaker = routing === "mix" || routing === "speaker-only";
 
+      // 1. Initialize Microphone capture
       if (getMic) {
         this.micStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-          },
+          audio: { echoCancellation: true, noiseSuppression: true },
           video: false,
         });
         if (!this.audioContext) {
@@ -59,12 +54,17 @@ export class AudioCaptureManager {
         );
       }
 
+      // 2. Initialize System/Speaker loopback capture
       if (getSpeaker) {
-        // Capture screen/tab audio loopback
         this.speakerStream = await navigator.mediaDevices.getDisplayMedia({
           audio: true,
           video: { width: 1, height: 1 },
         });
+        if (this.speakerStream.getAudioTracks().length === 0) {
+          throw new Error(
+            "No audio track found in display media. Please check 'Share system audio' when sharing.",
+          );
+        }
         if (!this.audioContext) {
           throw new Error(
             "AudioContext was closed during speaker initialization.",
@@ -81,7 +81,7 @@ export class AudioCaptureManager {
         );
       }
 
-      // Inline the AudioWorkletProcessor script
+      // 3. Build & load the AudioWorkletProcessor
       const processorCode = `
         class AudioProcessor extends AudioWorkletProcessor {
           constructor() {
@@ -91,26 +91,29 @@ export class AudioCaptureManager {
             this.bufferIndex = 0;
           }
 
-          process(inputs, outputs, parameters) {
+          process(inputs) {
             const input = inputs[0];
-            if (input && input.length > 0) {
-              const channelData = input[0];
-              if (channelData && channelData.length > 0) {
-                for (let i = 0; i < channelData.length; i++) {
-                  this.buffer[this.bufferIndex] = channelData[i];
-                  this.bufferIndex++;
-                  if (this.bufferIndex >= this.bufferSize) {
-                    this.port.postMessage(this.buffer);
-                    this.buffer = new Float32Array(this.bufferSize);
-                    this.bufferIndex = 0;
-                  }
-                }
+            if (!input || input.length === 0) return true;
+
+            const channelCount = input.length;
+            const sampleCount = input[0].length;
+
+            for (let i = 0; i < sampleCount; i++) {
+              let sum = 0;
+              for (let c = 0; c < channelCount; c++) {
+                sum += input[c][i];
+              }
+              this.buffer[this.bufferIndex++] = sum / channelCount;
+
+              if (this.bufferIndex >= this.bufferSize) {
+                this.port.postMessage(this.buffer);
+                this.buffer = new Float32Array(this.bufferSize);
+                this.bufferIndex = 0;
               }
             }
             return true;
           }
         }
-
         registerProcessor('audio-processor', AudioProcessor);
       `;
 
@@ -126,29 +129,16 @@ export class AudioCaptureManager {
         "audio-processor",
       );
 
-      // Connect nodes
-      if (this.micSource) {
-        this.micSource.connect(this.processorNode);
-      }
-      if (this.speakerSource) {
-        this.speakerSource.connect(this.processorNode);
-      }
-
-      if (!this.audioContext) {
-        throw new Error(
-          "AudioContext was closed before connecting audio worklet destination.",
-        );
-      }
+      // Connect sources to the processor
+      this.micSource?.connect(this.processorNode);
+      this.speakerSource?.connect(this.processorNode);
       this.processorNode.connect(this.audioContext.destination);
 
+      // Handle raw buffer messages from the processor
       this.processorNode.port.onmessage = (event) => {
-        if (this.isPausedCallback && this.isPausedCallback()) {
-          return;
-        }
+        if (this.isPausedCallback?.()) return;
 
         const inputData = event.data as Float32Array;
-
-        // Downsample input from native sample rate to 16kHz (in case contextSampleRate isn't 16000)
         const downsampled = this.downsample(
           inputData,
           contextSampleRate,
@@ -156,12 +146,8 @@ export class AudioCaptureManager {
         );
         const pcm16 = this.floatTo16BitPCM(downsampled);
 
-        // Send to WebSocket callback
-        if (this.onAudioDataCallback) {
-          this.onAudioDataCallback(pcm16);
-        }
+        this.onAudioDataCallback?.(pcm16);
 
-        // Save chunk to IndexedDB
         if (this.sessionId) {
           const chunkStartMs = (this.recordedSamples / 16000) * 1000;
           this.recordedSamples += pcm16.length;
@@ -182,39 +168,34 @@ export class AudioCaptureManager {
   }
 
   stop(): void {
+    // 1. Clean up worklet node
     if (this.processorNode) {
-      this.processorNode.disconnect();
       this.processorNode.port.onmessage = null;
+      this.processorNode.disconnect();
       this.processorNode = null;
     }
 
-    if (this.micSource) {
-      this.micSource.disconnect();
-      this.micSource = null;
-    }
+    // 2. Disconnect sources
+    this.micSource?.disconnect();
+    this.micSource = null;
+    this.speakerSource?.disconnect();
+    this.speakerSource = null;
 
-    if (this.speakerSource) {
-      this.speakerSource.disconnect();
-      this.speakerSource = null;
-    }
+    // 3. Stop hardware streams
+    this.micStream?.getTracks().forEach((track) => track.stop());
+    this.micStream = null;
+    this.speakerStream?.getTracks().forEach((track) => track.stop());
+    this.speakerStream = null;
 
-    if (this.micStream) {
-      this.micStream.getTracks().forEach((track) => track.stop());
-      this.micStream = null;
+    // 4. Close audio context
+    if (this.audioContext && this.audioContext.state !== "closed") {
+      this.audioContext.close().catch((err) => {
+        console.error("Failed to close AudioContext:", err);
+      });
     }
+    this.audioContext = null;
 
-    if (this.speakerStream) {
-      this.speakerStream.getTracks().forEach((track) => track.stop());
-      this.speakerStream = null;
-    }
-
-    if (this.audioContext) {
-      if (this.audioContext.state !== "closed") {
-        this.audioContext.close();
-      }
-      this.audioContext = null;
-    }
-
+    // 5. Reset states
     this.sessionId = null;
     this.onAudioDataCallback = null;
     this.isPausedCallback = null;
@@ -227,29 +208,21 @@ export class AudioCaptureManager {
     inputSampleRate: number,
     outputSampleRate: number,
   ): Float32Array {
-    if (inputSampleRate === outputSampleRate) {
-      return buffer;
-    }
-    const sampleRateRatio = inputSampleRate / outputSampleRate;
-    const newLength = Math.round(buffer.length / sampleRateRatio);
+    if (inputSampleRate === outputSampleRate) return buffer;
+
+    const ratio = inputSampleRate / outputSampleRate;
+    const newLength = Math.round(buffer.length / ratio);
     const result = new Float32Array(newLength);
-    let offsetResult = 0;
-    let offsetBuffer = 0;
-    while (offsetResult < result.length) {
-      const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-      let accum = 0;
-      let count = 0;
-      for (
-        let i = offsetBuffer;
-        i < nextOffsetBuffer && i < buffer.length;
-        i++
-      ) {
-        accum += buffer[i];
-        count++;
+
+    for (let i = 0; i < newLength; i++) {
+      const start = Math.floor(i * ratio);
+      const end = Math.min(buffer.length, Math.floor((i + 1) * ratio));
+
+      let sum = 0;
+      for (let j = start; j < end; j++) {
+        sum += buffer[j];
       }
-      result[offsetResult] = count > 0 ? accum / count : 0;
-      offsetResult++;
-      offsetBuffer = nextOffsetBuffer;
+      result[i] = sum / (end - start || 1);
     }
     return result;
   }
@@ -259,7 +232,7 @@ export class AudioCaptureManager {
     const output = new Int16Array(input.length);
     for (let i = 0; i < input.length; i++) {
       const s = Math.max(-1, Math.min(1, input[i]));
-      output[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      output[i] = s < 0 ? s * 32768 : s * 32767;
     }
     return output;
   }
@@ -276,7 +249,7 @@ export class AudioCaptureManager {
     const paddedStartMs = startTimestampMs - 1000;
     const paddedEndMs = endTimestampMs + 1000;
 
-    // Get overlapping audio chunks (use the padded end to fetch enough data)
+    // Get overlapping audio chunks
     const chunks = await db.getAudioChunksForRange(
       sessionId,
       paddedStartMs,
@@ -292,17 +265,13 @@ export class AudioCaptureManager {
     }
 
     // Concatenate all matching chunks
-    let totalLength = 0;
-    chunks.forEach((c) => {
-      totalLength += c.data.length;
-    });
-
+    const totalLength = chunks.reduce((acc, c) => acc + c.data.length, 0);
     const combinedInt16 = new Int16Array(totalLength);
     let offset = 0;
-    chunks.forEach((c) => {
-      combinedInt16.set(c.data, offset);
-      offset += c.data.length;
-    });
+    for (const chunk of chunks) {
+      combinedInt16.set(chunk.data, offset);
+      offset += chunk.data.length;
+    }
 
     // Convert back to Float32 range [-1.0, 1.0]
     const combinedFloat32 = new Float32Array(totalLength);
@@ -311,20 +280,20 @@ export class AudioCaptureManager {
     }
 
     // Determine sample rate and offsets
-    const sampleRate = 16000;
-    const samplesPerMs = sampleRate / 1000; // 16 samples/ms
+    const SAMPLE_RATE = 16000;
+    const firstChunkStartMs = chunks[0].startTimestamp;
 
-    // Find the offset of the first chunk
-    const firstChunkStart = chunks[0].startTimestamp;
+    // Calculate crop positions in samples
+    const startOffsetMs = paddedStartMs - firstChunkStartMs;
+    const endOffsetMs = paddedEndMs - firstChunkStartMs;
 
-    // Calculate crop positions in samples (use paddedEndMs for the end)
     const cropStartSample = Math.max(
       0,
-      Math.round((paddedStartMs - firstChunkStart) * samplesPerMs),
+      Math.round(startOffsetMs * (SAMPLE_RATE / 1000)),
     );
     const cropEndSample = Math.min(
       totalLength,
-      Math.round((paddedEndMs - firstChunkStart) * samplesPerMs),
+      Math.round(endOffsetMs * (SAMPLE_RATE / 1000)),
     );
 
     if (cropStartSample >= cropEndSample) {
@@ -338,27 +307,32 @@ export class AudioCaptureManager {
 
     const snippet = combinedFloat32.subarray(cropStartSample, cropEndSample);
 
-    // Play snippet
+    // Play snippet using a short-lived AudioContext
     const playCtx = new (
       window.AudioContext || (window as any).webkitAudioContext
     )();
-    const buffer = playCtx.createBuffer(1, snippet.length, 16000);
-    buffer.copyToChannel(snippet, 0);
+    try {
+      const buffer = playCtx.createBuffer(1, snippet.length, SAMPLE_RATE);
+      buffer.copyToChannel(snippet, 0);
 
-    const source = playCtx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(playCtx.destination);
+      const source = playCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(playCtx.destination);
 
-    source.onended = () => {
-      playCtx.close().catch((err) => {
-        console.error(
-          "Failed to close AudioContext after playback ended:",
-          err,
-        );
-      });
-    };
+      source.onended = () => {
+        playCtx.close().catch((err) => {
+          console.error(
+            "Failed to close AudioContext after playback ended:",
+            err,
+          );
+        });
+      };
 
-    source.start(0);
+      source.start(0);
+    } catch (e) {
+      playCtx.close().catch(() => {});
+      throw e;
+    }
   }
 }
 
