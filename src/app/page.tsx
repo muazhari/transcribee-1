@@ -277,7 +277,7 @@ export default function Home() {
                 : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
             }`}
           >
-            📁 Session List
+            🏠 Home
           </button>
           <button
             onClick={() => setActiveTab("transcription")}
@@ -297,7 +297,7 @@ export default function Home() {
                 : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
             }`}
           >
-            🔊 Playback
+            🔊 Playback Session
           </button>
           <button
             onClick={() => setActiveTab("qna")}
@@ -307,7 +307,7 @@ export default function Home() {
                 : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
             }`}
           >
-            🤖 Q&A Chatting
+            🤖 Q&A Chat
           </button>
         </div>
       </div>

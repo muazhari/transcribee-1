@@ -173,6 +173,21 @@ export default function TranscriptPanel({
 
   const tokenPercentage = Math.min(100, (tokenCount / tokenLimit) * 100);
 
+  if (!activeSession) {
+    return (
+      <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white justify-center items-center p-8 text-neutral-500">
+        <span className="text-4xl mb-3">🎙️</span>
+        <h3 className="font-bold text-lg text-neutral-400">
+          Ready to transcribe
+        </h3>
+        <p className="text-neutral-500 text-sm max-w-sm mt-1 text-center">
+          Select an existing session from the session panel or click &quot;New
+          Session&quot; to start recording and transcribing in real-time.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
       {/* Session Title Header */}
@@ -335,19 +350,7 @@ export default function TranscriptPanel({
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto p-6 flex flex-col gap-6"
       >
-        {!activeSession ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-neutral-500">
-            <span className="text-4xl mb-3">🎙️</span>
-            <h3 className="font-bold text-lg text-neutral-400">
-              Ready to transcribe
-            </h3>
-            <p className="text-sm max-w-sm mt-1">
-              Select an existing session from the session panel or click
-              &quot;New Session&quot; to start recording and transcribing in
-              real-time.
-            </p>
-          </div>
-        ) : transcripts.length === 0 && transcripts.length === 0 ? (
+        {transcripts.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-neutral-500 text-center py-16">
             <span className="text-2xl animate-bounce mb-3">💬</span>
             <p className="text-sm max-w-xs">

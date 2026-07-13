@@ -242,7 +242,7 @@ export default function PlaybackPanel() {
       <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white justify-center items-center p-8 text-neutral-500">
         <span className="text-4xl mb-3">🔊</span>
         <h3 className="font-bold text-lg text-neutral-400">Ready to play</h3>
-        <p className="text-sm max-w-sm mt-1 text-center">
+        <p className="text-neutral-500 text-sm max-w-sm mt-1 text-center">
           Select a session from the session list to begin audio playback.
         </p>
       </div>

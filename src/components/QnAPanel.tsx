@@ -111,6 +111,18 @@ export default function QnAPanel() {
     "Compare what Speaker 1 and Speaker 2 said",
   ];
 
+  if (!activeSession) {
+    return (
+      <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white justify-center items-center p-8 text-neutral-500">
+        <span className="text-4xl mb-3">🤖</span>
+        <h3 className="font-bold text-lg text-neutral-400">Ready to chat</h3>
+        <p className="text-neutral-500 text-sm max-w-sm mt-1 text-center">
+          Select a session from the session list to begin asking questions.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full lg:w-96 h-full bg-neutral-950 lg:border-l border-white/10 flex flex-col text-white">
       {/* Header */}
