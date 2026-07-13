@@ -90,7 +90,7 @@ export default function SessionPanel({
   });
 
   return (
-    <div className="w-full md:w-80 h-full bg-neutral-950 md:border-r border-white/10 flex flex-col text-white">
+    <div className="w-full lg:w-80 h-full bg-neutral-950 lg:border-r border-white/10 flex flex-col text-white">
       {/* Brand Logo & Action */}
       <div className="p-6 border-b border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-2">

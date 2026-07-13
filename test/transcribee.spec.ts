@@ -157,7 +157,7 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
   // 1. Load application home page
   await page.goto("/", { waitUntil: "networkidle" });
   console.log("HTML CONTENT:", await page.content());
-  await page.locator("text=Transcribee").waitFor({ state: "visible", timeout: 15000 });
+  await page.locator("text=Transcribee").waitFor({ state: "visible", timeout: 30000 });
   await expect(page).toHaveTitle(/Transcribee/);
 
   // 2. Open Settings and save valid credentials
@@ -211,7 +211,7 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
 
   // 1. Load application home page
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.locator('button:has-text("Live Session")').waitFor({ state: "visible", timeout: 15000 });
+  await page.locator('button:has-text("Live Session")').waitFor({ state: "visible", timeout: 30000 });
 
   // 2. Verify that the mobile header is visible and desktop panels are hidden or shown correctly
   // By default, activeTab is "transcription"

@@ -334,6 +334,22 @@ class TranscribeeDB {
       request.onerror = () => reject(request.error);
     });
   }
+
+  async getSessionAudioChunks(sessionId: string): Promise<AudioChunk[]> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction("audioChunks", "readonly");
+      const store = transaction.objectStore("audioChunks");
+      const index = store.index("sessionId");
+      const request = index.getAll(IDBKeyRange.only(sessionId));
+      request.onsuccess = () => {
+        const chunks = request.result as AudioChunk[];
+        chunks.sort((a, b) => a.startTimestamp - b.startTimestamp);
+        resolve(chunks);
+      };
+      request.onerror = () => reject(request.error);
+    });
+  }
 }
 
 export const db = new TranscribeeDB();

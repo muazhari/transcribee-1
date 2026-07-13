@@ -18,7 +18,6 @@ import {
   stopRecordingState,
   setDeviceStatus,
   setStreamHealth,
-  togglePauseState,
 } from "../lib/store/slices/mediaControlSlice";
 import {
   recalculateTokens,
@@ -32,6 +31,7 @@ import SessionPanel from "../components/SessionPanel";
 import SettingsDrawer from "../components/SettingsDrawer";
 import TranscriptPanel from "../components/TranscriptPanel";
 import QnAPanel from "../components/QnAPanel";
+import PlaybackPanel from "../components/PlaybackPanel";
 
 export default function Home() {
   const dispatch = useAppDispatch();
@@ -58,7 +58,7 @@ export default function Home() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "sessions" | "transcription" | "qna"
+    "sessions" | "transcription" | "playback" | "qna"
   >("transcription");
 
   // Load existing sessions on mount
@@ -201,20 +201,33 @@ export default function Home() {
             audioCaptureManager.stop();
             dispatch(stopRecordingState());
           },
-          onError: (e) => {
+          onError: () => {
             dispatch(setStreamHealth("poor"));
           },
-          onTokens: (tokens) => {
+          onTokens: (
+            tokens: {
+              text: string;
+              speaker: string;
+              start_ms: number;
+              end_ms?: number;
+              duration_ms?: number;
+              is_final: boolean;
+              translation_status?: "original" | "translation";
+              language: string;
+            }[],
+          ) => {
             dispatch(
               updateTranscripts(
-                tokens.map((t: any) => ({
+                tokens.map((t) => ({
                   id: crypto.randomUUID(),
                   sessionId: activeSession.id,
                   text: t.text,
                   speakerId: t.speaker,
                   startTimestamp: t.start_ms,
                   endTimestamp: t.end_ms ?? t.start_ms + (t.duration_ms ?? 0),
-                  duration: t.duration_ms ?? t.end_ms - t.start_ms,
+                  duration:
+                    t.duration_ms ??
+                    (t.end_ms !== undefined ? t.end_ms - t.start_ms : 0),
                   isFinal: t.is_final,
                   translationStatus: t.translation_status,
                   language: t.language,
@@ -237,9 +250,10 @@ export default function Home() {
         },
         () => isPausedRef.current,
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Audio recording setup failed:", err);
-      alert(`Could not start recording: ${err.message || err}`);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      alert(`Could not start recording: ${errMsg}`);
       stopRecording();
     }
   };
@@ -253,7 +267,7 @@ export default function Home() {
   return (
     <main className="h-screen w-full flex flex-col bg-neutral-900 font-sans overflow-hidden">
       {/* Header for mobile only */}
-      <div className="md:hidden flex w-full bg-neutral-950 border-b border-white/10 overflow-x-auto scrollbar-none shrink-0">
+      <div className="lg:hidden flex w-full bg-neutral-950 border-b border-white/10 overflow-x-auto scrollbar-none shrink-0">
         <div className="flex px-4 py-3 gap-2 min-w-max w-full justify-around">
           <button
             onClick={() => setActiveTab("sessions")}
@@ -276,6 +290,16 @@ export default function Home() {
             🎙️ Live Session
           </button>
           <button
+            onClick={() => setActiveTab("playback")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
+              activeTab === "playback"
+                ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
+                : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
+            }`}
+          >
+            🔊 Playback
+          </button>
+          <button
             onClick={() => setActiveTab("qna")}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
               activeTab === "qna"
@@ -289,10 +313,10 @@ export default function Home() {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 w-full flex flex-col md:flex-row min-h-0 overflow-hidden">
+      <div className="flex-1 w-full flex flex-col lg:flex-row min-h-0 overflow-hidden">
         {/* SessionPanel history */}
         <div
-          className={`${activeTab === "sessions" ? "flex" : "max-md:hidden"} md:flex h-full shrink-0 w-full md:w-auto`}
+          className={`${activeTab === "sessions" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-auto`}
         >
           <SessionPanel
             onNewSession={handleNewSession}
@@ -303,18 +327,50 @@ export default function Home() {
 
         {/* Main panel */}
         <div
-          className={`${activeTab === "transcription" ? "flex" : "max-md:hidden"} md:flex flex-1 flex-col min-w-0 h-full relative`}
+          className={`${
+            activeTab === "transcription" || activeTab === "playback"
+              ? "flex"
+              : "max-lg:hidden"
+          } lg:flex flex-1 flex-col min-w-0 h-full relative`}
         >
-          <TranscriptPanel
-            onRenameSession={handleRenameSession}
-            startRecording={startRecording}
-            stopRecording={stopRecording}
-          />
+          {/* Workspace Tabs (Desktop Only) */}
+          <div className="hidden lg:flex bg-neutral-950 border-b border-white/10 px-6 py-2.5 gap-4 shrink-0">
+            <button
+              onClick={() => setActiveTab("transcription")}
+              className={`pb-2 pt-1 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+                activeTab !== "playback"
+                  ? "border-violet-500 text-white"
+                  : "border-transparent text-neutral-400 hover:text-white"
+              }`}
+            >
+              🎙️ Live Session
+            </button>
+            <button
+              onClick={() => setActiveTab("playback")}
+              className={`pb-2 pt-1 text-sm font-bold border-b-2 transition-all cursor-pointer ${
+                activeTab === "playback"
+                  ? "border-violet-500 text-white"
+                  : "border-transparent text-neutral-400 hover:text-white"
+              }`}
+            >
+              🔊 Audio Playback
+            </button>
+          </div>
+
+          {activeTab === "playback" ? (
+            <PlaybackPanel />
+          ) : (
+            <TranscriptPanel
+              onRenameSession={handleRenameSession}
+              startRecording={startRecording}
+              stopRecording={stopRecording}
+            />
+          )}
         </div>
 
         {/* QnA Assistant */}
         <div
-          className={`${activeTab === "qna" ? "flex" : "max-md:hidden"} md:flex h-full shrink-0 w-full md:w-auto`}
+          className={`${activeTab === "qna" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-auto`}
         >
           <QnAPanel />
         </div>

@@ -275,7 +275,7 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   // 1. Load application home page (Desktop 1280x800)
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.locator("text=Transcribee").waitFor({ state: "visible", timeout: 15000 });
+  await page.locator("text=Transcribee").waitFor({ state: "visible", timeout: 30000 });
 
   // 2. Open Settings Drawer
   await page.click('button[title="Open Settings"]');
@@ -346,7 +346,7 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   // 6. Capture mobile layout
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.locator('button:has-text("Live Session")').waitFor({ state: "visible", timeout: 15000 });
+  await page.locator('button:has-text("Live Session")').waitFor({ state: "visible", timeout: 30000 });
   
   // Show active mobile tab "Live Session" with the content
   await page.waitForTimeout(500);

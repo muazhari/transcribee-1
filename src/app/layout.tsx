@@ -15,7 +15,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html>
+    <html
+      lang="en"
+      className="dark bg-neutral-950 text-white"
+      style={{ colorScheme: "dark" }}
+    >
       <body>
         <Providers>{children}</Providers>
       </body>

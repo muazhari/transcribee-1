@@ -246,8 +246,8 @@ export class AudioCaptureManager {
     if (typeof window === "undefined") return;
 
     // Add padding so playback doesn't cut off abruptly at the token boundaries
-    const paddedStartMs = startTimestampMs - 1000;
-    const paddedEndMs = endTimestampMs + 1000;
+    const paddedStartMs = startTimestampMs - 800;
+    const paddedEndMs = endTimestampMs + 800;
 
     // Get overlapping audio chunks
     const chunks = await db.getAudioChunksForRange(
@@ -332,6 +332,55 @@ export class AudioCaptureManager {
     } catch (e) {
       playCtx.close().catch(() => {});
       throw e;
+    }
+  }
+
+  static async getSessionAudioWavUrl(sessionId: string): Promise<string | null> {
+    const chunks = await db.getSessionAudioChunks(sessionId);
+    if (chunks.length === 0) return null;
+
+    // Concatenate PCM data
+    const totalLength = chunks.reduce((acc, c) => acc + c.data.length, 0);
+    const combinedInt16 = new Int16Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      combinedInt16.set(chunk.data, offset);
+      offset += chunk.data.length;
+    }
+
+    // Encode to WAV (sample rate is 16000Hz mono 16-bit PCM)
+    const wavBuffer = this.encodeWav(combinedInt16, 16000);
+    const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
+    return URL.createObjectURL(wavBlob);
+  }
+
+  private static encodeWav(samples: Int16Array, sampleRate: number): ArrayBuffer {
+    const buffer = new ArrayBuffer(44 + samples.length * 2);
+    const view = new DataView(buffer);
+    this.writeString(view, 0, "RIFF");
+    view.setUint32(4, 36 + samples.length * 2, true);
+    this.writeString(view, 8, "WAVE");
+    this.writeString(view, 12, "fmt ");
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); // Raw PCM
+    view.setUint16(22, 1, true); // Mono
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true); // Block align (1 channel * 2 bytes)
+    view.setUint16(34, 16, true); // 16-bit
+    this.writeString(view, 36, "data");
+    view.setUint32(40, samples.length * 2, true);
+
+    const offset = 44;
+    for (let i = 0; i < samples.length; i++) {
+      view.setInt16(offset + i * 2, samples[i], true);
+    }
+    return buffer;
+  }
+
+  private static writeString(view: DataView, offset: number, string: string) {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
     }
   }
 }

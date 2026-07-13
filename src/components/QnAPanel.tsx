@@ -112,7 +112,7 @@ export default function QnAPanel() {
   ];
 
   return (
-    <div className="w-full md:w-96 h-full bg-neutral-950 md:border-l border-white/10 flex flex-col text-white">
+    <div className="w-full lg:w-96 h-full bg-neutral-950 lg:border-l border-white/10 flex flex-col text-white">
       {/* Header */}
       <div className="p-6 border-b border-white/10 flex items-center justify-between">
         <h3 className="font-bold text-sm tracking-wide bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent uppercase">
