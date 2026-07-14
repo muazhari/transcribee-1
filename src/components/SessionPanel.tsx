@@ -12,7 +12,7 @@ import {
   setTranscripts,
   setSessionId,
 } from "../lib/store/slices/transcriptionSlice";
-import { clearChatHistory } from "@/lib/store/slices/chatContextSlice";
+import { clearChatHistory, setChatHistory } from "@/lib/store/slices/chatContextSlice";
 
 import Button from "./atoms/Button";
 import SearchBar from "./molecules/SearchBar";
@@ -53,6 +53,12 @@ export default function SessionPanel({
 
       const chats = await db.getChatPairs(session.id);
       dispatch(setChatPairs(chats));
+
+      const chatMessages = chats.flatMap((chat) => [
+        { role: "user" as const, content: chat.question },
+        { role: "assistant" as const, content: chat.answer },
+      ]);
+      dispatch(setChatHistory(chatMessages));
 
       if (onSelectSession) {
         onSelectSession();

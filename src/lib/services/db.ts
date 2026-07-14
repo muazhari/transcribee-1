@@ -73,7 +73,9 @@ class TranscribeeDB {
           );
         }
         if (!db.objectStoreNames.contains("chatPairs")) {
-          const chatStore = db.createObjectStore("chatPairs", { keyPath: "id" });
+          const chatStore = db.createObjectStore("chatPairs", {
+            keyPath: "id",
+          });
           chatStore.createIndex("sessionId", "sessionId", { unique: false });
         }
         if (!db.objectStoreNames.contains("audioChunks")) {

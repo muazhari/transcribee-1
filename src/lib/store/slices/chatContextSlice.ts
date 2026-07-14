@@ -31,6 +31,9 @@ export const chatContextSlice = createSlice({
     appendChatMessage: (state, action: PayloadAction<ChatMessage>) => {
       state.chatHistory.push(action.payload);
     },
+    setChatHistory: (state, action: PayloadAction<ChatMessage[]>) => {
+      state.chatHistory = action.payload;
+    },
     clearChatHistory: (state) => {
       state.chatHistory = [];
     },
@@ -77,6 +80,7 @@ export const chatContextSlice = createSlice({
 
 export const {
   appendChatMessage,
+  setChatHistory,
   clearChatHistory,
   setLoading,
   setTokenLimit,

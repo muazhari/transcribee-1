@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { askGeminiStream } from "../lib/services/gemini";
-import { db, Transcript } from "../lib/services/db";
+import { db } from "../lib/services/db";
 import {
   appendChatMessage,
   clearChatHistory,
@@ -190,12 +190,13 @@ export default function ChatPanel() {
       };
       await db.saveChatPair(chat);
       dispatch(addChatPairToActive(chat));
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Gemini Chat Error:", error);
+      const errMsg = error instanceof Error ? error.message : String(error);
       dispatch(
         appendChatMessage({
           role: "assistant",
-          content: `Error: Failed to process query. ${error?.message || ""}`,
+          content: `Error: Failed to process query. ${errMsg}`,
         }),
       );
     } finally {
@@ -208,9 +209,9 @@ export default function ChatPanel() {
   };
 
   const suggestionPrompts = [
-    "Summarize this transcriptions",
+    "Summarize this transcript",
     "What are the main action items?",
-    "Compare what each speakers said",
+    "Compare what each speaker said",
   ];
 
   if (!activeSession) {
@@ -266,10 +267,10 @@ export default function ChatPanel() {
           <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-neutral-500 my-auto">
             <span className="text-3xl mb-2">🤖</span>
             <p className="text-sm font-semibold text-neutral-400">
-              Ask questions about this transcriptions
+              Ask questions about this transcript
             </p>
             <p className="text-[10px] text-neutral-500 mt-1 max-w-xs">
-              Gemini will reference the full transcriptions as context.
+              Gemini will reference the full transcript as context.
             </p>
 
             {/* Suggestions */}
