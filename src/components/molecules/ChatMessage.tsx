@@ -34,8 +34,10 @@ export default function ChatMessage({
       }`}
     >
       <span
-        className={`text-[9px] uppercase tracking-wider font-extrabold ${
-          isAssistant && isStreaming ? "text-violet-400 animate-pulse" : "opacity-60"
+        className={`text-xs uppercase tracking-wider font-extrabold ${
+          isAssistant && isStreaming
+            ? "text-violet-400 animate-pulse"
+            : "opacity-60"
         }`}
       >
         {isAssistant

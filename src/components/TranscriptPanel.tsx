@@ -151,7 +151,7 @@ export default function TranscriptPanel({
   }
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
       {/* Session Title Header */}
       <div className="px-6 pt-5 pb-4 border-b border-white/10 flex flex-col gap-3">
         {/* Title + status row */}

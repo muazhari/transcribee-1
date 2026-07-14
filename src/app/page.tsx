@@ -236,7 +236,7 @@ export default function Home() {
   };
 
   return (
-    <main className="h-screen w-full flex flex-col bg-neutral-900 font-sans overflow-hidden">
+    <main className="h-dvh w-full flex flex-col bg-neutral-900 font-sans overflow-hidden">
       {/* Header for mobile only */}
       <div className="lg:hidden flex w-full bg-neutral-950 border-b border-white/10 overflow-x-auto scrollbar-none shrink-0">
         <div className="flex px-4 py-3 gap-2 min-w-max w-full justify-around">

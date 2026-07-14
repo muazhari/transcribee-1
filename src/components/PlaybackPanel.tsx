@@ -182,7 +182,7 @@ export default function PlaybackPanel() {
   }
 
   return (
-    <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
       {/* Hidden Audio Primitive */}
       {audioUrl && (
         <audio
