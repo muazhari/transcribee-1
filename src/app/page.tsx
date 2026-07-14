@@ -164,8 +164,8 @@ export default function Home() {
           onOpen: () => {
             dispatch(startRecordingState());
           },
-          onClose: () => {
-            audioCaptureManager.stop();
+          onClose: async () => {
+            await audioCaptureManager.stop();
             dispatch(stopRecordingState());
           },
           onError: () => {
@@ -225,12 +225,12 @@ export default function Home() {
       console.error("Audio recording setup failed:", err);
       const errMsg = err instanceof Error ? err.message : String(err);
       alert(`Could not start recording: ${errMsg}`);
-      stopRecording();
+      await stopRecording();
     }
   };
 
-  const stopRecording = () => {
-    audioCaptureManager.stop();
+  const stopRecording = async () => {
+    await audioCaptureManager.stop();
     sonioxStreamClient.disconnect();
     dispatch(stopRecordingState());
   };

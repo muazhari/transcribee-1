@@ -12,6 +12,7 @@ export class AudioCaptureManager {
   private offsetTimestamp: number = 0;
   private isPausedCallback: (() => boolean) | null = null;
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
+  private pendingSaves: Promise<void>[] = [];
 
   async start(
     sessionId: string,
@@ -23,7 +24,7 @@ export class AudioCaptureManager {
     if (typeof window === "undefined") return;
 
     // Prevent multiple concurrent sessions/resource leaks
-    this.stop();
+    await this.stop();
 
     this.sessionId = sessionId;
     this.onAudioDataCallback = onAudioData;
@@ -156,22 +157,27 @@ export class AudioCaptureManager {
             (this.recordedSamples / 16000) * 1000 + this.offsetTimestamp;
           this.recordedSamples += pcm16.length;
 
-          db.saveAudioChunk({
+          const savePromise = db.saveAudioChunk({
             sessionId: this.sessionId,
             startTimestamp: chunkStartMs,
             data: pcm16,
           }).catch((err) => {
             console.error("Failed to save audio chunk to DB:", err);
           });
+
+          this.pendingSaves.push(savePromise);
+          savePromise.finally(() => {
+            this.pendingSaves = this.pendingSaves.filter((p) => p !== savePromise);
+          });
         }
       };
     } catch (error) {
-      this.stop();
+      await this.stop();
       throw error;
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     // 1. Clean up worklet node
     if (this.processorNode) {
       this.processorNode.port.onmessage = null;
@@ -191,15 +197,25 @@ export class AudioCaptureManager {
     this.speakerStream?.getTracks().forEach((track) => track.stop());
     this.speakerStream = null;
 
-    // 4. Close audio context
-    if (this.audioContext && this.audioContext.state !== "closed") {
-      this.audioContext.close().catch((err) => {
-        console.error("Failed to close AudioContext:", err);
+    // 4. Wait for all pending database saves to complete
+    if (this.pendingSaves.length > 0) {
+      await Promise.all(this.pendingSaves).catch((err) => {
+        console.error("Failed to await pending audio saves:", err);
       });
+      this.pendingSaves = [];
+    }
+
+    // 5. Close audio context
+    if (this.audioContext && this.audioContext.state !== "closed") {
+      try {
+        await this.audioContext.close();
+      } catch (err) {
+        console.error("Failed to close AudioContext:", err);
+      }
     }
     this.audioContext = null;
 
-    // 5. Reset states
+    // 6. Reset states
     this.sessionId = null;
     this.onAudioDataCallback = null;
     this.isPausedCallback = null;
@@ -207,7 +223,7 @@ export class AudioCaptureManager {
     this.offsetTimestamp = 0;
   }
 
-  // Linear box-filter downsampling
+  // Downsampling using linear interpolation resampler to prevent aliasing robotic buzz
   private downsample(
     buffer: Float32Array,
     inputSampleRate: number,
@@ -220,14 +236,13 @@ export class AudioCaptureManager {
     const result = new Float32Array(newLength);
 
     for (let i = 0; i < newLength; i++) {
-      const start = Math.floor(i * ratio);
-      const end = Math.min(buffer.length, Math.floor((i + 1) * ratio));
+      const sourceIndex = i * ratio;
+      const indexFloor = Math.floor(sourceIndex);
+      const indexNext = Math.min(buffer.length - 1, indexFloor + 1);
+      const fraction = sourceIndex - indexFloor;
 
-      let sum = 0;
-      for (let j = start; j < end; j++) {
-        sum += buffer[j];
-      }
-      result[i] = sum / (end - start || 1);
+      result[i] =
+        buffer[indexFloor] * (1 - fraction) + buffer[indexNext] * fraction;
     }
     return result;
   }
