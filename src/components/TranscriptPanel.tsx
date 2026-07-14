@@ -11,8 +11,6 @@ import {
 } from "../lib/utils/exportUtils";
 
 import Badge from "./atoms/Badge";
-import TokenMeter from "./atoms/TokenMeter";
-import WarningBanner from "./atoms/WarningBanner";
 import ExportDropdown from "./molecules/ExportDropdown";
 import TranscriptBlock from "./molecules/TranscriptBlock";
 import RecordingControls from "./molecules/RecordingControls";
@@ -40,9 +38,6 @@ export default function TranscriptPanel({
   const streamHealth = useAppSelector(
     (state) => state.mediaControl.streamHealth,
   );
-
-  const { tokenCount, tokenLimit, tokenLimitExceeded, tokenLimitTruncated } =
-    useAppSelector((state) => state.chatContext);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [exportingAudio, setExportingAudio] = useState(false);
@@ -198,23 +193,7 @@ export default function TranscriptPanel({
           />
         </div>
 
-        {/* Token capacity meter */}
-        <TokenMeter tokenCount={tokenCount} tokenLimit={tokenLimit} />
       </div>
-
-      {/* Warnings & Notices */}
-      {tokenLimitTruncated && (
-        <WarningBanner type="error">
-          <strong>Context Window Full:</strong> Exceeded 100% capacity. FIFO
-          truncation was executed to preserve latest speaker turns.
-        </WarningBanner>
-      )}
-      {!tokenLimitTruncated && tokenLimitExceeded && (
-        <WarningBanner type="warning">
-          <strong>Warning:</strong> Active token volume has passed 85%
-          threshold constraints. Truncation is imminent.
-        </WarningBanner>
-      )}
 
       {/* Live Transcript Content Panel */}
       <div

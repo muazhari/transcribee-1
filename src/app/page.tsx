@@ -11,7 +11,6 @@ import {
 import {
   setSessionId,
   updateTranscripts,
-  truncateOldTranscripts,
 } from "../lib/store/slices/transcriptionSlice";
 import {
   startRecordingState,
@@ -19,11 +18,6 @@ import {
   setDeviceStatus,
   setStreamHealth,
 } from "../lib/store/slices/mediaControlSlice";
-import {
-  recalculateTokens,
-  setTokenLimitTruncatedFlag,
-  clearChatHistory,
-} from "../lib/store/slices/chatContextSlice";
 import { audioCaptureManager } from "../lib/services/audioCapture";
 import { sonioxStreamClient } from "../lib/services/soniox";
 
@@ -51,10 +45,6 @@ export default function Home() {
   }, [isPaused]);
 
   const config = useAppSelector((state) => state.config);
-
-  const { tokenLimitTruncated, tokenLimit } = useAppSelector(
-    (state) => state.chatContext,
-  );
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
@@ -96,40 +86,7 @@ export default function Home() {
     }
   }, [transcripts, activeSession]);
 
-  // Recalculate Gemini token count and trigger alerts
-  useEffect(() => {
-    if (transcripts.length > 0) {
-      const text = transcripts.map((t) => t.text).join(" ");
-      dispatch(recalculateTokens({ transcriptsText: text }));
-    } else {
-      dispatch(recalculateTokens({ transcriptsText: "" }));
-    }
-  }, [transcripts, dispatch]);
 
-  // Handle Smart FIFO Context Window Truncation (100% capacity)
-  useEffect(() => {
-    if (tokenLimitTruncated && transcripts.length > 0) {
-      let sliceIndex = 0;
-      const tempText = transcripts.map((t) => t.text).join(" ");
-      let tempTokens = Math.ceil(tempText.length / 4);
-
-      // Slicing complete transcripts until token usage falls back below the limit
-      while (tempTokens >= tokenLimit && sliceIndex < transcripts.length) {
-        sliceIndex++;
-        const slicedText = transcripts
-          .slice(sliceIndex)
-          .map((t) => t.text)
-          .join(" ");
-        tempTokens = Math.ceil(slicedText.length / 4);
-      }
-
-      if (sliceIndex > 0) {
-        dispatch(truncateOldTranscripts(sliceIndex));
-        // Reset the truncation alert trigger
-        dispatch(setTokenLimitTruncatedFlag(false));
-      }
-    }
-  }, [tokenLimitTruncated, transcripts, tokenLimit, dispatch]);
 
   const handleNewSession = async () => {
     if (isRecording) {
