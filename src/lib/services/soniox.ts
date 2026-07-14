@@ -5,7 +5,7 @@ export interface SonioxConfig {
   enableEndpointDetection: boolean;
   enableLanguageIdentification: boolean;
   enableTranslation: boolean;
-  translationMode: "none" | "one-way" | "two-way";
+  translationMode: "one-way" | "two-way";
   translationTargetLanguage?: string;
   translationLanguageA?: string;
   translationLanguageB?: string;
@@ -42,15 +42,6 @@ export class SonioxStreamClient {
     this.ws.onopen = () => {
       console.log("Soniox WebSocket onOpen");
 
-      // Determine language hints for the request
-      let hints = config.languageHints;
-      if (config.translationMode === "two-way") {
-        hints = [
-          config.translationLanguageA || "en",
-          config.translationLanguageB || "id",
-        ];
-      }
-
       // Send initial JSON configuration message
       const initialConfig: any = {
         api_key: config.apiKey,
@@ -61,7 +52,7 @@ export class SonioxStreamClient {
         enable_speaker_diarization: true,
         enable_endpoint_detection: config.enableEndpointDetection,
         enable_language_identification: config.enableLanguageIdentification,
-        language_hints: hints,
+        language_hints: config.languageHints,
       };
 
       // Add translation properties if enabled

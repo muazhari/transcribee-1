@@ -282,7 +282,7 @@ export default function ChatPanel() {
                   disabled={!activeSession}
                   variant="secondary"
                   size="none"
-                  className="!text-left !justify-start !font-normal !w-full !p-3 !rounded-lg bg-neutral-900 border border-white/5 hover:border-violet-500/40 hover:bg-neutral-900/80"
+                  className="!text-left !justify-start !font-normal !w-full !p-3 !rounded-lg text-sm bg-neutral-900 border border-white/5 hover:border-violet-500/40 hover:bg-neutral-900/80"
                 >
                   {prompt}
                 </Button>

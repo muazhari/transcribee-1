@@ -26,7 +26,7 @@ const settingsFormSchema = z.object({
   enableEndpointDetection: z.boolean(),
   enableLanguageIdentification: z.boolean(),
   enableTranslation: z.boolean(),
-  translationTab: z.enum(["one-way", "two-way", "none"]),
+  translationTab: z.enum(["one-way", "two-way"]),
   translationTargetLanguage: z.string(),
   translationLanguageA: z.string(),
   translationLanguageB: z.string(),
@@ -199,8 +199,14 @@ export default function SettingsDrawer({
               error={errors.aiModel?.message}
               options={[
                 { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
-                { value: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite" },
-                { value: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro Preview" },
+                {
+                  value: "gemini-3.1-flash-lite",
+                  label: "Gemini 3.1 Flash Lite",
+                },
+                {
+                  value: "gemini-3.1-pro-preview",
+                  label: "Gemini 3.1 Pro Preview",
+                },
               ]}
               {...register("aiModel")}
             />
