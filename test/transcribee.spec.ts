@@ -168,7 +168,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Full user journey: settings input, start session, transcribe, audio scrub, QnA", async ({
+test("Full user journey: settings input, start session, transcribe, audio scrub, Chat", async ({
   page,
 }) => {
   // 1. Load application home page
@@ -222,7 +222,7 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
     page.locator('button:has-text("Start Recording")'),
   ).toBeVisible();
 
-  // 8. Interact with Gemini QnA chatbot over the transcripts
+  // 8. Interact with Gemini Chat chatbot over the transcripts
   await page.fill(
     'input[placeholder="Type your question..."]',
     "Summarize this meeting",
@@ -252,7 +252,7 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
   // By default, activeTab is "transcription"
   await expect(page.locator('button:has-text("Live Session")').first()).toBeVisible();
   await expect(page.locator('button:has-text("Home")').first()).toBeVisible();
-  await expect(page.locator('button:has-text("Q&A Chat")').first()).toBeVisible();
+  await expect(page.locator('button:has-text("AI Chat")').first()).toBeVisible();
 
   // The Live Session content is visible by default on mobile
   await expect(page.locator("text=Ready to transcribe")).toBeVisible();
@@ -260,22 +260,22 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
   // SessionPanel (Session list) should be hidden by default on mobile
   await expect(page.locator("text=Session Logs")).not.toBeVisible();
 
-  // QnA panel should be hidden by default on mobile
-  await expect(page.locator("text=AI Q&A Assistant")).not.toBeVisible();
+  // Chat panel should be hidden by default on mobile
+  await expect(page.locator("text=AI Assistant")).not.toBeVisible();
 
-  // 3. Switch to "Session List" tab (Home tab on mobile)
+  // 3. Switch to "Session List" tab
   await page.click('button:has-text("Home")');
   await expect(page.locator("text=Session Logs")).toBeVisible();
   await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
-  await expect(page.locator("text=AI Q&A Assistant")).not.toBeVisible();
+  await expect(page.locator("text=AI Assistant")).not.toBeVisible();
 
-  // 4. Switch to "Q&A Chatting" tab (Q&A Chat tab on mobile)
-  await page.click('button:has-text("Q&A Chat")');
+  // 4. Switch to "AI Chat" tab
+  await page.click('button:has-text("AI Chat")');
   await expect(page.locator("text=Ready to chat")).toBeVisible();
   await expect(page.locator("text=Session Logs")).not.toBeVisible();
   await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
 
-  // 5. Open settings from Session List tab on mobile (Home tab on mobile)
+  // 5. Open settings from Session List tab
   await page.click('button:has-text("Home")');
   await page.click('button[title="Open Settings"]');
   await expect(page.locator("text=System Configurations")).toBeVisible();

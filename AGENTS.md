@@ -1,6 +1,6 @@
 # Technical Architecture & Client-Side Agents Specification (`agents.md`)
 
-This document outlines the architecture of the **Local-First Real-Time Transcription & AI QnA System**. Operating entirely within the browser sandbox, the system orchestrates audio streaming, real-time AI processing, context management, and client-side relational storage without relying on an intermediate backend application server.
+This document outlines the architecture of the **Local-First Real-Time Transcription & AI Chat System**. Operating entirely within the browser sandbox, the system orchestrates audio streaming, real-time AI processing, context management, and client-side relational storage without relying on an intermediate backend application server.
 
 ---
 
@@ -16,7 +16,7 @@ The system is designed around a decoupled, reactive event-driven architecture po
                                                | Raw Audio Buffer
                                                v
 +-----------------------+  Audio Stream +------+------+   Real-Time Tokens  +------------------------+
-|  Soniox Live STT Agent | ------------> |  RTK Global | <------------------ |   Gemini QnA Agent     |
+|  Soniox Live STT Agent | ------------> |  RTK Global | <------------------ |   Gemini Chat Agent     |
 |   (WebSocket Engine)  | <------------ | State Engine | ----------------->  |   (LangChain JS Client)|
 +-----------------------+  Config / Keys +------+------+   Context Stream   +------------------------+
                                                |
@@ -39,7 +39,7 @@ Responsible for validating application configurations, managing API credentials 
 
 - **Tech Stack:** `react-hook-form`, `zod`, `@reduxjs/toolkit`
 - **Key Responsibilities:**
-- Validate user credentials (Gemini API Key, Soniox API Key) via Zod schemas.
+- Validate user credentials (Google AI API Key, Soniox API Key) via Zod schemas.
 - Enforce fallbacks (e.g., Default AI Model: `Gemini 3.5 Flash`, Default STT Model: `stt-rt-v5`).
 - Dynamically propagate updates to audio routing and language configurations down to dependent streams.
 
@@ -99,7 +99,7 @@ Monitors the client-side accumulated transcription array, performing real-time s
 
 ---
 
-### 2.5 Gemini QnA Agent
+### 2.5 Gemini Chat Agent
 
 Manages standalone semantic interrogation interactions over the compiled session context logs. Runs entirely inside the browser using LangChain expressions.
 
@@ -160,7 +160,7 @@ model Session {
   title          String?
   audioBlobPath  String          // Reference path pointing to browser local storage index
   transcripts    Transcript[]
-  qnaPairs       QnAPair[]
+  chatPairs       ChatPair[]
 }
 
 model Transcript {
@@ -176,7 +176,7 @@ model Transcript {
   duration       Int             // Duration of the transcription segment in milliseconds
 }
 
-model QnAPair {
+model ChatPair {
   id             String          @id @default(uuid())
   sessionId      String
   session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)

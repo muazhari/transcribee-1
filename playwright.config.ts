@@ -14,10 +14,23 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   projects: [
+    // {
+    //   name: "chromium",
+    //   use: {
+    //     ...devices["Desktop Chrome"],
+    //     launchOptions: {
+    //       args: [
+    //         "--use-fake-ui-for-media-stream",
+    //         "--use-fake-device-for-media-stream",
+    //       ],
+    //     },
+    //   },
+    // },
     {
-      name: "chromium",
+      name: "msedge",
       use: {
-        ...devices["Desktop Chrome"],
+        ...devices["Desktop Edge"],
+        channel: "msedge",
         launchOptions: {
           args: [
             "--use-fake-ui-for-media-stream",

@@ -325,11 +325,11 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   });
   console.log("Captured Live Transcription screenshot.");
 
-  // 5. Stop Recording & Open Q&A Panel
+  // 5. Stop Recording & Open AI Chat Panel
   await page.click('button:has-text("Stop Recording")');
   await expect(page.locator('button:has-text("Start Recording")')).toBeVisible();
 
-  // Ask Q&A question
+  // Ask AI Chat question
   await page.fill('input[placeholder="Type your question..."]', "Summarize the key points of the demo so far.");
   await page.click('button:has-text("Send")');
 
@@ -337,7 +337,7 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   await expect(page.locator("text=This is a mock response from Gemini")).toBeVisible({ timeout: 5000 });
   await page.waitForTimeout(500);
 
-  // Take main layout showing Q&A assistant along with transcript and session panels
+  // Take main layout showing AI Chat assistant along with transcript and session panels
   await page.screenshot({
     path: path.join(screenshotDir, "main_app.png"),
   });

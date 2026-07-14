@@ -20,7 +20,7 @@ export interface Transcript {
   offsetTimestamp?: number;
 }
 
-export interface QnAPair {
+export interface ChatPair {
   id: string;
   sessionId: string;
   question: string;
@@ -72,9 +72,9 @@ class TranscribeeDB {
             { unique: false },
           );
         }
-        if (!db.objectStoreNames.contains("qnaPairs")) {
-          const qnaStore = db.createObjectStore("qnaPairs", { keyPath: "id" });
-          qnaStore.createIndex("sessionId", "sessionId", { unique: false });
+        if (!db.objectStoreNames.contains("chatPairs")) {
+          const chatStore = db.createObjectStore("chatPairs", { keyPath: "id" });
+          chatStore.createIndex("sessionId", "sessionId", { unique: false });
         }
         if (!db.objectStoreNames.contains("audioChunks")) {
           const audioStore = db.createObjectStore("audioChunks", {
@@ -144,10 +144,10 @@ class TranscribeeDB {
 
   async deleteSession(id: string): Promise<void> {
     const db = await this.getDB();
-    // Cascade delete transcripts, qnaPairs, and audioChunks in a transaction
+    // Cascade delete transcripts, chatPairs, and audioChunks in a transaction
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(
-        ["sessions", "transcripts", "qnaPairs", "audioChunks"],
+        ["sessions", "transcripts", "chatPairs", "audioChunks"],
         "readwrite",
       );
 
@@ -169,11 +169,11 @@ class TranscribeeDB {
         }
       };
 
-      // Delete QnA pairs
-      const qnaStore = transaction.objectStore("qnaPairs");
-      const qnaIndex = qnaStore.index("sessionId");
-      const qnaCursorRequest = qnaIndex.openCursor(IDBKeyRange.only(id));
-      qnaCursorRequest.onsuccess = (event) => {
+      // Delete Chat pairs
+      const chatStore = transaction.objectStore("chatPairs");
+      const chatIndex = chatStore.index("sessionId");
+      const chatCursorRequest = chatIndex.openCursor(IDBKeyRange.only(id));
+      chatCursorRequest.onsuccess = (event) => {
         const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>)
           .result;
         if (cursor) {
@@ -258,27 +258,27 @@ class TranscribeeDB {
     });
   }
 
-  // --- QnA Pairs ---
-  async saveQnAPair(qnaPair: QnAPair): Promise<void> {
+  // --- Chat Pairs ---
+  async saveChatPair(chatPair: ChatPair): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction("qnaPairs", "readwrite");
-      const store = transaction.objectStore("qnaPairs");
-      const request = store.put(qnaPair);
+      const transaction = db.transaction("chatPairs", "readwrite");
+      const store = transaction.objectStore("chatPairs");
+      const request = store.put(chatPair);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });
   }
 
-  async getQnAPairs(sessionId: string): Promise<QnAPair[]> {
+  async getChatPairs(sessionId: string): Promise<ChatPair[]> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction("qnaPairs", "readonly");
-      const store = transaction.objectStore("qnaPairs");
+      const transaction = db.transaction("chatPairs", "readonly");
+      const store = transaction.objectStore("chatPairs");
       const index = store.index("sessionId");
       const request = index.getAll(IDBKeyRange.only(sessionId));
       request.onsuccess = () => {
-        const sorted = (request.result as QnAPair[]).sort(
+        const sorted = (request.result as ChatPair[]).sort(
           (a, b) =>
             new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
         );

@@ -30,7 +30,7 @@ import { sonioxStreamClient } from "../lib/services/soniox";
 import SessionPanel from "../components/SessionPanel";
 import SettingsDrawer from "../components/SettingsDrawer";
 import TranscriptPanel from "../components/TranscriptPanel";
-import QnAPanel from "../components/QnAPanel";
+import ChatPanel from "../components/ChatPanel";
 import PlaybackPanel from "../components/PlaybackPanel";
 
 export default function Home() {
@@ -58,7 +58,7 @@ export default function Home() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "sessions" | "transcription" | "playback" | "qna"
+    "sessions" | "transcription" | "playback" | "chat"
   >("transcription");
 
   // Load existing sessions on mount
@@ -313,14 +313,14 @@ export default function Home() {
             🔊 Playback Session
           </button>
           <button
-            onClick={() => setActiveTab("qna")}
+            onClick={() => setActiveTab("chat")}
             className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-              activeTab === "qna"
+              activeTab === "chat"
                 ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
                 : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
             }`}
           >
-            🤖 Q&A Chat
+            🤖 AI Chat
           </button>
         </div>
       </div>
@@ -366,7 +366,7 @@ export default function Home() {
                   : "border-transparent text-neutral-400 hover:text-white"
               }`}
             >
-              🔊 Audio Playback
+              🔊 Playback Session
             </button>
           </div>
 
@@ -381,11 +381,11 @@ export default function Home() {
           )}
         </div>
 
-        {/* QnA Assistant */}
+        {/* Chat Assistant */}
         <div
-          className={`${activeTab === "qna" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-auto`}
+          className={`${activeTab === "chat" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-auto`}
         >
-          <QnAPanel />
+          <ChatPanel />
         </div>
 
         {/* Settings Dialog */}

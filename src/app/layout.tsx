@@ -3,9 +3,9 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Transcribee - Transcription & QnA",
+  title: "Transcribee - Transcription & Chat",
   description:
-    "Real-time transcription with speaker diarization, translation, and QnA.",
+    "Real-time multilingual code-switching transcriber with diarization, translation, playback, and chat.",
   manifest: "/manifest.json",
 };
 

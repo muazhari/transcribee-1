@@ -9,9 +9,13 @@ import {
   clearChatHistory,
   setLoading,
 } from "../lib/store/slices/chatContextSlice";
-import { addQnAPairToActive } from "../lib/store/slices/persistenceSlice";
+import { addChatPairToActive } from "../lib/store/slices/persistenceSlice";
 
-export default function QnAPanel() {
+import Button from "./atoms/Button";
+import Input from "./atoms/Input";
+import ChatMessage from "./molecules/ChatMessage";
+
+export default function ChatPanel() {
   const dispatch = useAppDispatch();
 
   const activeSession = useAppSelector(
@@ -44,7 +48,7 @@ export default function QnAPanel() {
       return;
     }
     if (!config.googleApiKey) {
-      alert("Please configure your Gemini API Key in Settings first.");
+      alert("Please configure your Google AI API Key in Settings first.");
       return;
     }
 
@@ -78,18 +82,18 @@ export default function QnAPanel() {
       dispatch(appendChatMessage({ role: "assistant", content: result }));
       setStreamedResponse("");
 
-      // Save QnA pair to DB
-      const qna = {
+      // Save Chat pair to DB
+      const chat = {
         id: crypto.randomUUID(),
         sessionId: activeSession.id,
         question: queryText,
         answer: result,
         timestamp: new Date(),
       };
-      await db.saveQnAPair(qna);
-      dispatch(addQnAPairToActive(qna));
+      await db.saveChatPair(chat);
+      dispatch(addChatPairToActive(chat));
     } catch (error: any) {
-      console.error("Gemini QnA Error:", error);
+      console.error("Gemini Chat Error:", error);
       dispatch(
         appendChatMessage({
           role: "assistant",
@@ -128,15 +132,12 @@ export default function QnAPanel() {
       {/* Header */}
       <div className="p-6 border-b border-white/10 flex items-center justify-between">
         <h3 className="font-bold text-sm tracking-wide bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent uppercase">
-          AI Q&A Assistant
+          AI Assistant
         </h3>
         {chatHistory.length > 0 && (
-          <button
-            onClick={handleClear}
-            className="text-[10px] text-neutral-400 hover:text-white uppercase font-bold tracking-wider hover:bg-neutral-800 px-2 py-1 rounded transition"
-          >
+          <Button onClick={handleClear} variant="clear" size="none">
             Clear
-          </button>
+          </Button>
         )}
       </div>
 
@@ -148,7 +149,7 @@ export default function QnAPanel() {
         {chatHistory.length === 0 && !isLoading && (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-4 text-neutral-500 my-auto">
             <span className="text-3xl mb-2">🤖</span>
-            <p className="text-xs font-semibold text-neutral-400">
+            <p className="text-sm font-semibold text-neutral-400">
               Ask questions about this transcriptions
             </p>
             <p className="text-[10px] text-neutral-500 mt-1 max-w-xs">
@@ -158,57 +159,37 @@ export default function QnAPanel() {
             {/* Suggestions */}
             <div className="mt-6 flex flex-col gap-2 w-full">
               {suggestionPrompts.map((prompt, i) => (
-                <button
+                <Button
                   key={i}
                   onClick={() => handleAsk(prompt)}
                   disabled={!activeSession}
-                  className="w-full text-left text-xs bg-neutral-900 border border-white/5 hover:border-violet-500/40 p-3 rounded-lg text-neutral-300 hover:text-white hover:bg-neutral-900/80 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="secondary"
+                  size="none"
+                  className="!text-left !justify-start !font-normal !w-full !p-3 !rounded-lg bg-neutral-900 border border-white/5 hover:border-violet-500/40 hover:bg-neutral-900/80"
                 >
                   {prompt}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
         )}
 
         {/* Message sequence */}
-        {chatHistory.map((msg, i) => {
-          const isAssistant = msg.role === "assistant";
-          return (
-            <div
-              key={i}
-              className={`flex flex-col gap-1 max-w-[85%] rounded-2xl p-4 text-xs font-medium leading-relaxed ${
-                isAssistant
-                  ? "bg-neutral-900 text-neutral-200 self-start rounded-tl-none border border-white/5"
-                  : "bg-gradient-to-tr from-violet-600 to-indigo-600 text-white self-end rounded-tr-none"
-              }`}
-            >
-              <span className="text-[9px] uppercase tracking-wider font-extrabold opacity-60">
-                {isAssistant ? "AI Assistant" : "You"}
-              </span>
-              <p className="whitespace-pre-wrap">{msg.content}</p>
-            </div>
-          );
-        })}
+        {chatHistory.map((msg, i) => (
+          <ChatMessage key={i} role={msg.role} content={msg.content} />
+        ))}
 
         {/* Streaming text container */}
         {isLoading && streamedResponse && (
-          <div className="flex flex-col gap-1 max-w-[85%] bg-neutral-900 text-neutral-200 self-start rounded-2xl rounded-tl-none p-4 border border-white/5">
-            <span className="text-[9px] uppercase tracking-wider font-extrabold text-violet-400 animate-pulse">
-              AI is writing...
-            </span>
-            <p className="text-xs whitespace-pre-wrap">{streamedResponse}</p>
-          </div>
+          <ChatMessage
+            role="assistant"
+            content={streamedResponse}
+            isStreaming
+          />
         )}
 
         {/* Loading skeleton */}
-        {isLoading && !streamedResponse && (
-          <div className="flex flex-col gap-2 max-w-[85%] bg-neutral-900 text-neutral-200 self-start rounded-2xl rounded-tl-none p-4 border border-white/5 w-full animate-pulse">
-            <div className="w-16 h-2 bg-neutral-800 rounded" />
-            <div className="w-full h-3 bg-neutral-800 rounded" />
-            <div className="w-3/4 h-3 bg-neutral-800 rounded" />
-          </div>
-        )}
+        {isLoading && !streamedResponse && <ChatMessage isSkeleton />}
       </div>
 
       {/* Input */}
@@ -220,21 +201,24 @@ export default function QnAPanel() {
           }}
           className="flex items-center gap-2"
         >
-          <input
+          <Input
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             disabled={!activeSession || isLoading}
-            className="flex-1 bg-neutral-900 border border-white/10 rounded-lg px-4 py-3 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-violet-500 transition-colors disabled:opacity-50"
+            variant="dark"
+            className="!px-4 !py-3 !text-sm"
             placeholder="Type your question..."
           />
-          <button
+          <Button
             type="submit"
             disabled={!activeSession || !question.trim() || isLoading}
-            className="p-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-bold text-xs shadow-md shadow-violet-950/20 active:scale-95 transition-transform"
+            variant="primary"
+            size="none"
+            className="!p-3 !rounded-lg"
           >
             Send
-          </button>
+          </Button>
         </form>
       </div>
     </div>

@@ -1,16 +1,16 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { Session, QnAPair } from "../../services/db";
+import { Session, ChatPair } from "../../services/db";
 
 export interface PersistenceState {
   sessions: Session[];
   activeSession: Session | null;
-  qnaPairs: QnAPair[];
+  chatPairs: ChatPair[];
 }
 
 const initialState: PersistenceState = {
   sessions: [],
   activeSession: null,
-  qnaPairs: [],
+  chatPairs: [],
 };
 
 export const persistenceSlice = createSlice({
@@ -23,11 +23,11 @@ export const persistenceSlice = createSlice({
     setActiveSession: (state, action: PayloadAction<Session | null>) => {
       state.activeSession = action.payload;
       if (action.payload === null) {
-        state.qnaPairs = [];
+        state.chatPairs = [];
       }
     },
-    setQnAPairs: (state, action: PayloadAction<QnAPair[]>) => {
-      state.qnaPairs = action.payload;
+    setChatPairs: (state, action: PayloadAction<ChatPair[]>) => {
+      state.chatPairs = action.payload;
     },
     addSessionToList: (state, action: PayloadAction<Session>) => {
       state.sessions.unshift(action.payload);
@@ -36,11 +36,11 @@ export const persistenceSlice = createSlice({
       state.sessions = state.sessions.filter((s) => s.id !== action.payload);
       if (state.activeSession?.id === action.payload) {
         state.activeSession = null;
-        state.qnaPairs = [];
+        state.chatPairs = [];
       }
     },
-    addQnAPairToActive: (state, action: PayloadAction<QnAPair>) => {
-      state.qnaPairs.push(action.payload);
+    addChatPairToActive: (state, action: PayloadAction<ChatPair>) => {
+      state.chatPairs.push(action.payload);
     },
   },
 });
@@ -48,9 +48,9 @@ export const persistenceSlice = createSlice({
 export const {
   setSessions,
   setActiveSession,
-  setQnAPairs,
+  setChatPairs,
   addSessionToList,
   removeSessionFromList,
-  addQnAPairToActive,
+  addChatPairToActive,
 } = persistenceSlice.actions;
 export default persistenceSlice.reducer;

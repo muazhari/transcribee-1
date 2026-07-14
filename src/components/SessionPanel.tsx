@@ -5,7 +5,7 @@ import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { Session, db } from "../lib/services/db";
 import {
   setActiveSession,
-  setQnAPairs,
+  setChatPairs,
   removeSessionFromList,
 } from "../lib/store/slices/persistenceSlice";
 import {
@@ -13,6 +13,10 @@ import {
   setSessionId,
 } from "../lib/store/slices/transcriptionSlice";
 import { clearChatHistory } from "@/lib/store/slices/chatContextSlice";
+
+import Button from "./atoms/Button";
+import SearchBar from "./molecules/SearchBar";
+import SessionItem from "./molecules/SessionItem";
 
 interface SessionPanelProps {
   onNewSession: () => void;
@@ -42,13 +46,13 @@ export default function SessionPanel({
     dispatch(setActiveSession(session));
     dispatch(setSessionId(session.id));
 
-    // Fetch transcripts and QnAs from DB
+    // Fetch transcripts and Chats from DB
     try {
       const transcripts = await db.getTranscripts(session.id);
       dispatch(setTranscripts(transcripts));
 
-      const qnas = await db.getQnAPairs(session.id);
-      dispatch(setQnAPairs(qnas));
+      const chats = await db.getChatPairs(session.id);
+      dispatch(setChatPairs(chats));
 
       if (onSelectSession) {
         onSelectSession();
@@ -101,40 +105,34 @@ export default function SessionPanel({
             Transcribee
           </span>
         </div>
-        <button
+        <Button
           onClick={openSettings}
-          className="p-2 rounded-lg bg-neutral-900 border border-white/10 hover:border-violet-500 hover:bg-neutral-800 transition"
+          variant="secondary"
+          size="none"
+          className="!p-2 !rounded-lg"
           title="Open Settings"
         >
           ⚙️
-        </button>
+        </Button>
       </div>
 
       {/* Action CTA */}
       <div className="p-4 border-b border-white/5">
-        <button
+        <Button
           onClick={onNewSession}
           disabled={isRecording}
-          className="w-full py-3 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-bold text-sm shadow-md transition-all active:scale-[0.98]"
+          variant="primary"
+          size="none"
+          fullWidth
+          className="!py-3 !rounded-xl text-sm"
         >
           + New Session
-        </button>
+        </Button>
       </div>
 
       {/* Search Input */}
       <div className="px-4 py-3 border-b border-white/5">
-        <div className="relative">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-neutral-900 border border-white/10 rounded-lg pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-violet-500 transition-colors"
-            placeholder="Search sessions..."
-          />
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 text-sm">
-            🔍
-          </span>
-        </div>
+        <SearchBar value={search} onChange={setSearch} />
       </div>
 
       {/* History List */}
@@ -148,47 +146,15 @@ export default function SessionPanel({
             No sessions found
           </p>
         ) : (
-          filteredSessions.map((session) => {
-            const isActive = activeSession?.id === session.id;
-            const dateStr = new Date(session.createdAt).toLocaleDateString(
-              undefined,
-              {
-                month: "short",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              },
-            );
-            const defaultTitle = `Session - ${dateStr}`;
-
-            return (
-              <div
-                key={session.id}
-                onClick={() => handleSelectSession(session)}
-                className={`group flex items-center justify-between p-3 rounded-xl cursor-pointer border transition-all ${
-                  isActive
-                    ? "bg-violet-950/40 border-violet-500/50 shadow-md shadow-violet-950/20"
-                    : "bg-neutral-900/40 border-white/5 hover:bg-neutral-900/80 hover:border-white/10"
-                }`}
-              >
-                <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  <span className="text-xs font-bold text-white truncate">
-                    {session.title || defaultTitle}
-                  </span>
-                  <span className="text-[10px] text-neutral-500">
-                    {dateStr}
-                  </span>
-                </div>
-                <button
-                  onClick={(e) => handleDeleteSession(e, session.id)}
-                  className="p-1.5 rounded-lg hover:bg-neutral-800 text-neutral-400 hover:text-red-400 transition"
-                  title="Delete session"
-                >
-                  🗑️
-                </button>
-              </div>
-            );
-          })
+          filteredSessions.map((session) => (
+            <SessionItem
+              key={session.id}
+              session={session}
+              isActive={activeSession?.id === session.id}
+              onSelect={() => handleSelectSession(session)}
+              onDelete={(e) => handleDeleteSession(e, session.id)}
+            />
+          ))
         )}
       </div>
     </div>
