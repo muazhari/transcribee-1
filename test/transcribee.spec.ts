@@ -172,7 +172,7 @@ test("Full user journey: settings input, start session, transcribe, audio scrub,
   page,
 }) => {
   // 1. Load application home page
-  await page.goto("/", { waitUntil: "networkidle" });
+  await page.goto("/", { waitUntil: "load" });
   console.log("HTML CONTENT:", await page.content());
   await page
     .locator("text=Transcribee")
@@ -242,7 +242,7 @@ test("Mobile viewport: verify header scrollable menu and view switching", async 
   await page.setViewportSize({ width: 375, height: 812 });
 
   // 1. Load application home page
-  await page.goto("/", { waitUntil: "networkidle" });
+  await page.goto("/", { waitUntil: "load" });
   await page
     .locator('button:has-text("Live Session")')
     .first()
@@ -312,7 +312,7 @@ test("Consecutive recording starts in the same session: verify correct offsets a
   page,
 }) => {
   // 1. Load application home page
-  await page.goto("/", { waitUntil: "networkidle" });
+  await page.goto("/", { waitUntil: "load" });
   await page
     .locator("text=Transcribee")
     .waitFor({ state: "visible", timeout: 30000 });

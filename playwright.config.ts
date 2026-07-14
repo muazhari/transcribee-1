@@ -5,6 +5,11 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  webServer: {
+    command: "bun run build && bun run start",
+    url: "http://localhost:3000",
+    reuseExistingServer: !process.env.CI,
+  },
   workers: 1,
   reporter: "line",
   use: {
@@ -14,23 +19,10 @@ export default defineConfig({
     video: "retain-on-failure",
   },
   projects: [
-    // {
-    //   name: "chromium",
-    //   use: {
-    //     ...devices["Desktop Chrome"],
-    //     launchOptions: {
-    //       args: [
-    //         "--use-fake-ui-for-media-stream",
-    //         "--use-fake-device-for-media-stream",
-    //       ],
-    //     },
-    //   },
-    // },
     {
-      name: "msedge",
+      name: "chromium",
       use: {
-        ...devices["Desktop Edge"],
-        channel: "msedge",
+        ...devices["Desktop Chrome"],
         launchOptions: {
           args: [
             "--use-fake-ui-for-media-stream",

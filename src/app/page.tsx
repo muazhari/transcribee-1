@@ -18,6 +18,7 @@ import {
   setDeviceStatus,
   setStreamHealth,
 } from "../lib/store/slices/mediaControlSlice";
+import { clearChatHistory } from "../lib/store/slices/chatContextSlice";
 import { audioCaptureManager } from "../lib/services/audioCapture";
 import { sonioxStreamClient } from "../lib/services/soniox";
 
