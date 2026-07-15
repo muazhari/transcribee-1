@@ -26,7 +26,7 @@ const settingsFormSchema = z.object({
   enableEndpointDetection: z.boolean(),
   enableLanguageIdentification: z.boolean(),
   enableTranslation: z.boolean(),
-  translationTab: z.enum(["one-way", "two-way"]),
+  translationMode: z.enum(["one-way", "two-way"]),
   translationTargetLanguage: z.string(),
   translationLanguageA: z.string(),
   translationLanguageB: z.string(),
@@ -69,7 +69,7 @@ export default function SettingsDrawer({
       enableEndpointDetection: config.enableEndpointDetection,
       enableLanguageIdentification: config.enableLanguageIdentification,
       enableTranslation: config.enableTranslation,
-      translationTab: config.translationMode,
+      translationMode: config.translationMode,
       translationTargetLanguage: config.translationTargetLanguage,
       translationLanguageA: config.translationLanguageA,
       translationLanguageB: config.translationLanguageB,
@@ -91,7 +91,7 @@ export default function SettingsDrawer({
   }, []);
 
   const enableTranslation = watch("enableTranslation");
-  const translationTab = watch("translationTab");
+  const translationMode = watch("translationMode");
 
   const onSubmit = (values: SettingsFormValues) => {
     let resolvedAudioRouting = values.audioRouting;
@@ -109,7 +109,7 @@ export default function SettingsDrawer({
         enableEndpointDetection: values.enableEndpointDetection,
         enableLanguageIdentification: values.enableLanguageIdentification,
         enableTranslation: values.enableTranslation,
-        translationMode: values.translationTab,
+        translationMode: values.translationMode,
         translationTargetLanguage: values.translationTargetLanguage,
         translationLanguageA: values.translationLanguageA,
         translationLanguageB: values.translationLanguageB,
@@ -270,7 +270,7 @@ export default function SettingsDrawer({
             {enableTranslation && (
               <div className="flex flex-col gap-4 mt-2">
                 <Controller
-                  name="translationTab"
+                  name="translationMode"
                   control={control}
                   render={({ field }) => (
                     <div className="w-full bg-neutral-900 p-0.5 rounded-lg border border-white/5 flex select-none">
@@ -304,7 +304,7 @@ export default function SettingsDrawer({
 
             {enableTranslation && (
               <div className="flex flex-col gap-4 mt-2">
-                {translationTab === "one-way" ? (
+                {translationMode === "one-way" ? (
                   <Select
                     label="Target language"
                     options={langSelectOptions}

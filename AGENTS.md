@@ -50,12 +50,17 @@ export const SettingsSchema = zod.object({
   googleApiKey: zod.string().min(1, "Google AI API Key is required"),
   aiModel: zod.string().default("gemini-3.5-flash"),
   transcriptionModel: zod.string().default("stt-rt-v5"),
-  languageHints: zod.string().split(",")
-    .map((s) => s.trim().default(["en", "id"]),
+  languageHints: zod.array(z.string()).default(["en", "id"]),
   enableEndpointDetection: zod.boolean().default(true),
   enableLanguageIdentification: zod.boolean().default(true),
+  enableTranslation: z.boolean().default(false),
   translationMode: zod.enum(["one-way", "two-way"]).default("two-way"),
-  audioRouting: zod.enum(["mix", "mic-only", "speaker-only"]).default("mix"),
+  translationTargetLanguage: z.string().default("en"),
+  translationLanguageA: z.string().default("en"),
+  translationLanguageB: z.string().default("id"),
+  audioRouting: zod
+    .enum(["mix", "mic-only", "speaker-only"])
+    .default("mic-only"),
 });
 ```
 
