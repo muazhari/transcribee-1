@@ -54,7 +54,7 @@ export const SettingsSchema = zod.object({
     .map((s) => s.trim().default(["en", "id"]),
   enableEndpointDetection: zod.boolean().default(true),
   enableLanguageIdentification: zod.boolean().default(true),
-  translationMode: zod.enum(["none", "one-way", "two-way"]).default("none"),
+  translationMode: zod.enum(["one-way", "two-way"]).default("two-way"),
   audioRouting: zod.enum(["mix", "mic-only", "speaker-only"]).default("mix"),
 });
 ```
@@ -170,10 +170,14 @@ model Transcript {
   speakerId      String          // Diarization identity mapping ("Speaker 1", "Speaker 2")
   text           String          // Original localized text content
   isFinal        Boolean         // Whether the text is final or not
+  translationStatus String       // Status of the translation
+  language       String          // Language of the transcription
   translation    String?         // Outgoing target language translation block if enabled
   startTimestamp Int             // Start point offset in milliseconds from session initialization
   endTimestamp   Int             // End point offset in milliseconds from session initialization
+  offsetTimestamp Int             // Offset timestamp of the transcription segment
   duration       Int             // Duration of the transcription segment in milliseconds
+
 }
 
 model ChatPair {
@@ -216,4 +220,4 @@ The application implements a tailored design framework targeting high-speed perf
 ## 6. End-to-end Testing
 
 - Test the application using Playwright. Test all branches, features, and coverages.
-- When executing end-to-end tests, it is crucial to mimic real-world conditions as closely as possible. This includes simulating user interactions with the audio input and verifying the system's response to various conditions. The tests should validate the complete user journey: initiating a recording session, reviewing the final transcript, reviewing translations, and chatting with the transcript. Furthermore, the tests should cover edge cases and error states, such as network interruptions or invalid input, to ensure the application handles them gracefully.
+- When executing end-to-end tests, it is crucial to mimic real-world conditions as closely as possible. This includes simulating user interactions with the audio input and verifying the system's response to various conditions. The tests should validate the complete user journey: initiating a recording session, reviewing the final transcript, reviewing translations, reviewing playback, and chatting with the transcript. Furthermore, the tests should cover edge cases and error states, such as network interruptions or invalid input, to ensure the application handles them gracefully.

@@ -53,8 +53,10 @@ export default function TranscriptPanel({
   const handleScroll = () => {
     const el = containerRef.current;
     if (!el) return;
-    // If user is within 60px of the bottom, lock scroll. Otherwise unlock.
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+    // If user is within 3.75rem (60px) of the bottom, lock scroll. Otherwise unlock.
+    const rootFontSize = typeof window !== "undefined" ? (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) : 16;
+    const threshold = 3.75 * rootFontSize;
+    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
     isAutoScrollLocked.current = isAtBottom;
   };
 

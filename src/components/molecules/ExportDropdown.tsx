@@ -29,7 +29,7 @@ export default function ExportDropdown({
       >
         <span>📥</span>
         <span>Export</span>
-        <span className="text-[9px] text-neutral-400">▼</span>
+        <span className="text-[0.5625rem] text-neutral-400">▼</span>
       </Button>
 
       {isOpen && (
@@ -39,7 +39,7 @@ export default function ExportDropdown({
             onClick={() => setIsOpen(false)}
           />
           <div className="absolute right-0 mt-2 w-48 bg-neutral-950/95 backdrop-blur-md border border-white/15 rounded-2xl shadow-2xl z-50 py-1.5 overflow-hidden animate-[fadeIn_0.15s_ease-out]">
-            <div className="px-3 py-1.5 text-[9px] font-bold text-neutral-500 uppercase tracking-widest border-b border-white/5">
+            <div className="px-3 py-1.5 text-[0.5625rem] font-bold text-neutral-500 uppercase tracking-widest border-b border-white/5">
               Download Audio
             </div>
 
@@ -58,7 +58,7 @@ export default function ExportDropdown({
               </span>
             </button>
 
-            <div className="px-3 py-1.5 text-[9px] font-bold text-neutral-500 uppercase tracking-widest border-t border-b border-white/5">
+            <div className="px-3 py-1.5 text-[0.5625rem] font-bold text-neutral-500 uppercase tracking-widest border-t border-b border-white/5">
               Download Transcript
             </div>
 

@@ -115,7 +115,7 @@ export default function PlaybackControls({
                 key={rate}
                 onClick={() => onPlaybackRateChange(rate)}
                 type="button"
-                className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                className={`px-2.5 py-1.5 rounded-lg text-[0.625rem] font-bold transition-all cursor-pointer ${
                   playbackRate === rate
                     ? "bg-violet-600 text-white shadow-sm"
                     : "text-neutral-400 hover:text-white"
@@ -127,7 +127,7 @@ export default function PlaybackControls({
           </div>
 
           {/* Volume Controls */}
-          <div className="flex items-center justify-center gap-3 min-w-[140px] shrink-0">
+          <div className="flex items-center justify-center gap-3 min-w-[8.75rem] shrink-0">
             <Button
               onClick={onToggleMute}
               variant="secondary"
@@ -148,7 +148,7 @@ export default function PlaybackControls({
               step={0.05}
               value={isMuted ? 0 : volume}
               onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
-              className="w-full max-w-[120px] h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-violet-500 focus:outline-none"
+              className="w-full max-w-[7.5rem] h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-violet-500 focus:outline-none"
               title="Volume slider"
             />
           </div>
@@ -157,7 +157,7 @@ export default function PlaybackControls({
 
       {/* Timeline Slider */}
       <div className="flex items-center gap-3">
-        <span className="text-[10px] font-mono text-neutral-400 w-10 text-right">
+        <span className="text-[0.625rem] font-mono text-neutral-400 w-10 text-right">
           {formatTime(currentTime)}
         </span>
         <input
@@ -169,7 +169,7 @@ export default function PlaybackControls({
           onChange={onTimelineChange}
           className="flex-1 h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
         />
-        <span className="text-[10px] font-mono text-neutral-400 w-10 text-left">
+        <span className="text-[0.625rem] font-mono text-neutral-400 w-10 text-left">
           {formatTime(duration)}
         </span>
       </div>

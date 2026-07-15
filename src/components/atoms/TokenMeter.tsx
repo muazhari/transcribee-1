@@ -10,7 +10,7 @@ export default function TokenMeter({ tokenCount, tokenLimit }: TokenMeterProps) 
 
   return (
     <div className="flex flex-col gap-1 w-full">
-      <div className="flex justify-between text-[10px] text-neutral-400 font-semibold">
+      <div className="flex justify-between text-[0.625rem] text-neutral-400 font-semibold">
         <span>Token Load</span>
         <span>
           {tokenCount.toLocaleString()} / {tokenLimit.toLocaleString()}

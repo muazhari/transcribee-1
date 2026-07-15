@@ -2,8 +2,8 @@
 
 /* Custom Scrollbar Styles for modern Webkit browsers (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
 }
 
 ::-webkit-scrollbar-track {
@@ -12,8 +12,8 @@
 
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
-  border-radius: 9999px;
-  border: 2px solid #0a0a0a; /* spacing/padding trick */
+  border-radius: 9999rem;
+  border: 0.125rem solid #0a0a0a; /* spacing/padding trick */
 }
 
 ::-webkit-scrollbar-thumb:hover {

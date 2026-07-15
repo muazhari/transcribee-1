@@ -269,7 +269,7 @@ export default function ChatPanel() {
             <p className="text-sm font-semibold text-neutral-400">
               Ask questions about this transcript
             </p>
-            <p className="text-[10px] text-neutral-500 mt-1 max-w-xs">
+            <p className="text-xs text-neutral-500 mt-1 max-w-xs">
               Gemini will reference the full transcript as context.
             </p>
 

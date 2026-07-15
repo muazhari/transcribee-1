@@ -98,7 +98,7 @@ export default function LanguageHintsSelector({
       </label>
       <div className="relative w-full">
         <div
-          className="w-full bg-neutral-800 border border-white/10 rounded-lg p-2 flex flex-wrap gap-2 items-center cursor-text min-h-[46px] focus-within:border-violet-500 transition-colors pr-10 relative"
+          className="w-full bg-neutral-800 border border-white/10 rounded-lg p-2 flex flex-wrap gap-2 items-center cursor-text min-h-[2.875rem] focus-within:border-violet-500 transition-colors pr-10 relative"
           onClick={() => {
             const input = document.getElementById("lang-search-input");
             if (input) input.focus();
@@ -132,7 +132,7 @@ export default function LanguageHintsSelector({
             id="lang-search-input"
             type="text"
             placeholder={selectedCodes.length === 0 ? "Select languages..." : ""}
-            className="flex-1 bg-transparent border-none outline-none text-sm text-white min-w-[80px] p-0.5 focus:ring-0"
+            className="flex-1 bg-transparent border-none outline-none text-sm text-white min-w-[5rem] p-0.5 focus:ring-0"
             onFocus={() => setShowLangDropdown(true)}
             onChange={(e) => {
               setLangQuery(e.target.value);

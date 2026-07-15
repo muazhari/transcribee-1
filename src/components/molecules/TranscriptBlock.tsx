@@ -55,7 +55,7 @@ export default function TranscriptBlock({
           Speaker {transcript.speakerId}
         </Badge>
         <span
-          className={`font-mono text-[10px] ${
+          className={`font-mono text-[0.625rem] ${
             !onClickBlock
               ? "cursor-pointer text-neutral-500 hover:text-violet-300 p-1 hover:bg-violet-500/20 rounded transition border-b border-transparent hover:border-violet-500/40"
               : "text-neutral-400"
@@ -97,7 +97,7 @@ export default function TranscriptBlock({
       {/* Translation block if present */}
       {transcript.translation && (
         <div className="mt-2 pt-2 border-t border-white/5 flex flex-col gap-1">
-          <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest">
+          <span className="text-[0.625rem] font-bold text-neutral-500 uppercase tracking-widest">
             Translation
           </span>
           <p className="text-sm text-neutral-400">

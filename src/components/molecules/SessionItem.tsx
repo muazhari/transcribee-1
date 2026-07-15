@@ -36,7 +36,7 @@ export default function SessionItem({
         <span className="text-xs font-bold text-white truncate">
           {session.title || defaultTitle}
         </span>
-        <span className="text-[10px] text-neutral-500">{dateStr}</span>
+        <span className="text-[0.625rem] text-neutral-500">{dateStr}</span>
       </div>
       <Button
         variant="icon"

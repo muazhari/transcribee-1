@@ -106,7 +106,9 @@ export default function PlaybackPanel() {
       );
       if (card) {
         const container = scrollContainerRef.current;
-        const targetScrollTop = card.offsetTop - 12; // 12px breathing room offset at top
+        const rootFontSize = typeof window !== "undefined" ? (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) : 16;
+        const offset = 0.75 * rootFontSize; // 0.75rem (12px) breathing room offset at top
+        const targetScrollTop = card.offsetTop - offset;
         container.scrollTo({
           top: Math.max(0, targetScrollTop),
           behavior: "smooth",
