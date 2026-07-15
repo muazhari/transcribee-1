@@ -87,8 +87,6 @@ export default function Home() {
     }
   }, [transcripts, activeSession]);
 
-
-
   const handleNewSession = async () => {
     if (isRecording) {
       alert("Please stop recording before starting a new session.");
@@ -175,7 +173,7 @@ export default function Home() {
             tokens: {
               text: string;
               speaker: string;
-              start_ms: number;
+              start_ms?: number;
               end_ms?: number;
               duration_ms?: number;
               is_final: boolean;
@@ -183,27 +181,28 @@ export default function Home() {
               language: string;
             }[],
           ) => {
-            dispatch(
-              updateTranscripts(
-                tokens.map((t) => ({
-                  id: crypto.randomUUID(),
-                  sessionId: activeSession.id,
-                  text: t.text,
-                  speakerId: t.speaker,
-                  startTimestamp: t.start_ms + offsetTimestamp,
-                  endTimestamp:
-                    (t.end_ms ?? t.start_ms + (t.duration_ms ?? 0)) +
-                    offsetTimestamp,
-                  duration:
-                    t.duration_ms ??
-                    (t.end_ms !== undefined ? t.end_ms - t.start_ms : 0),
-                  isFinal: t.is_final,
-                  translationStatus: t.translation_status,
-                  language: t.language,
-                  offsetTimestamp: offsetTimestamp,
-                })),
-              ),
-            );
+            const mappedTokens = tokens.map((t) => {
+              const start = t.start_ms ?? 0;
+              const end =
+                t.end_ms ??
+                (t.duration_ms !== undefined ? start + t.duration_ms : start);
+
+              return {
+                id: crypto.randomUUID(),
+                sessionId: activeSession.id,
+                text: t.text,
+                speakerId: t.speaker,
+                startTimestamp: start + offsetTimestamp,
+                endTimestamp: end + offsetTimestamp,
+                duration: end - start,
+                isFinal: t.is_final,
+                translationStatus: t.translation_status,
+                language: t.language,
+                offsetTimestamp,
+              };
+            });
+
+            dispatch(updateTranscripts(mappedTokens));
           },
         },
       );

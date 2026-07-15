@@ -44,38 +44,22 @@ export const transcriptionSlice = createSlice({
     },
     updateTranscripts: (state, action: PayloadAction<Transcript[]>) => {
       const newTranscripts = action.payload;
+      if (newTranscripts.length === 0) return;
 
-      if (newTranscripts.length === 0) {
-        return;
-      }
+      // 1. Separate final vs non-final transcripts
+      const newFinal = newTranscripts.filter((t) => t.isFinal);
+      const newNonFinal = newTranscripts.filter((t) => !t.isFinal);
 
-      const newNonFinalTranscripts: Transcript[] = [];
-      const newFinalTranscripts: Transcript[] = [];
+      state.finalTranscripts.push(...newFinal);
+      state.nonFinalTranscripts = newNonFinal;
 
-      for (const transcript of newTranscripts) {
-        if (transcript.isFinal) {
-          newFinalTranscripts.push(transcript);
-        } else {
-          newNonFinalTranscripts.push(transcript);
-        }
-      }
+      const transcripts = [...state.finalTranscripts, ...state.nonFinalTranscripts];
 
-      state.finalTranscripts.push(...newFinalTranscripts);
-      state.nonFinalTranscripts = newNonFinalTranscripts;
-
-      const transcripts: Transcript[] = [
-        ...state.finalTranscripts,
-        ...state.nonFinalTranscripts,
-      ];
-
-      // 1. Group transcripts (both final and non-final) by their offsetTimestamp
+      // 2. Group transcripts by offsetTimestamp
       const groups: Record<number, Transcript[]> = {};
       for (const t of transcripts) {
         const offset = t.offsetTimestamp || 0;
-        if (!groups[offset]) {
-          groups[offset] = [];
-        }
-        groups[offset].push(t);
+        (groups[offset] = groups[offset] || []).push(t);
       }
 
       const sortedOffsets = Object.keys(groups)
@@ -83,14 +67,12 @@ export const transcriptionSlice = createSlice({
         .sort((a, b) => a - b);
 
       const segmentTranscripts: Transcript[] = [];
-
-      // Clean up <end> token helper:
       const cleanText = (text: string) => text.replace(/<end>/g, "");
 
       for (const offset of sortedOffsets) {
         const groupTranscripts = groups[offset];
 
-        // 2. Separate original and translation tokens in this group
+        // 3. Separate original and translation tokens
         const originalTokens = groupTranscripts.filter(
           (t) => t.translationStatus !== "translation",
         );
@@ -98,77 +80,41 @@ export const transcriptionSlice = createSlice({
           (t) => t.translationStatus === "translation",
         );
 
+        // 4. Reconstruct original transcripts into segments by speaker & language
         const groupSegments: Transcript[] = [];
-
-        // 3. Group the original transcripts into segments by speaker and language
         let currentSegment: Transcript | null = null;
 
-        for (const transcript of originalTokens) {
-          const isEnd = transcript.text.includes("<end>");
-          const cleanedText = cleanText(transcript.text);
+        for (const token of originalTokens) {
+          const isEnd = token.text.includes("<end>");
+          const text = cleanText(token.text);
 
           if (!currentSegment) {
-            if (cleanedText.trim().length > 0 || !isEnd) {
-              currentSegment = {
-                ...transcript,
-                text: cleanedText,
-              };
-              if (isEnd) {
-                if (currentSegment.text.trim().length > 0) {
-                  groupSegments.push(currentSegment);
-                }
-                currentSegment = null;
-              }
+            if (text.trim().length > 0 || !isEnd) {
+              currentSegment = { ...token, text };
             }
           } else {
-            const isNewSpeaker =
-              transcript.speakerId !== currentSegment.speakerId;
-            const isNewLanguage =
-              transcript.language !== currentSegment.language;
+            const isBoundary =
+              token.speakerId !== currentSegment.speakerId ||
+              token.language !== currentSegment.language;
 
-            if (isNewSpeaker || isNewLanguage) {
+            if (isBoundary) {
               if (currentSegment.text.trim().length > 0) {
                 groupSegments.push(currentSegment);
               }
-              if (isEnd) {
-                if (cleanedText.trim().length > 0) {
-                  groupSegments.push({
-                    ...transcript,
-                    text: cleanedText,
-                  });
-                }
-                currentSegment = null;
-              } else {
-                if (cleanedText.trim().length > 0) {
-                  currentSegment = {
-                    ...transcript,
-                    text: cleanedText,
-                  };
-                } else {
-                  currentSegment = null;
-                }
-              }
-            } else if (isEnd) {
-              if (cleanedText.trim().length > 0) {
-                currentSegment.text += cleanedText;
-              }
-              currentSegment.endTimestamp = transcript.endTimestamp;
-              currentSegment.duration =
-                currentSegment.endTimestamp - currentSegment.startTimestamp;
-              currentSegment.isFinal = transcript.isFinal;
-              if (currentSegment.text.trim().length > 0) {
-                groupSegments.push(currentSegment);
-              }
-              currentSegment = null;
+              currentSegment = text.trim().length > 0 || !isEnd ? { ...token, text } : null;
             } else {
-              if (cleanedText.trim().length > 0) {
-                currentSegment.text += cleanedText;
-              }
-              currentSegment.endTimestamp = transcript.endTimestamp;
-              currentSegment.duration =
-                currentSegment.endTimestamp - currentSegment.startTimestamp;
-              currentSegment.isFinal = transcript.isFinal;
+              currentSegment.text += text;
+              currentSegment.endTimestamp = token.endTimestamp;
+              currentSegment.duration = currentSegment.endTimestamp - currentSegment.startTimestamp;
+              currentSegment.isFinal = token.isFinal;
             }
+          }
+
+          if (isEnd && currentSegment) {
+            if (currentSegment.text.trim().length > 0) {
+              groupSegments.push(currentSegment);
+            }
+            currentSegment = null;
           }
         }
 
@@ -176,48 +122,68 @@ export const transcriptionSlice = createSlice({
           groupSegments.push(currentSegment);
         }
 
-        // 4. Group original segments by speaker
+        // 5. Group original segments and translation tokens by speaker
         const speakerOrigSegs: Record<string, Transcript[]> = {};
         for (const seg of groupSegments) {
-          if (!speakerOrigSegs[seg.speakerId]) {
-            speakerOrigSegs[seg.speakerId] = [];
-          }
-          speakerOrigSegs[seg.speakerId].push(seg);
+          (speakerOrigSegs[seg.speakerId] = speakerOrigSegs[seg.speakerId] || []).push(seg);
         }
 
-        // 5. Group translation tokens by speaker
         const speakerTransTokens: Record<string, Transcript[]> = {};
         for (const trans of translationTokens) {
-          if (!speakerTransTokens[trans.speakerId]) {
-            speakerTransTokens[trans.speakerId] = [];
-          }
-          speakerTransTokens[trans.speakerId].push(trans);
+          (speakerTransTokens[trans.speakerId] = speakerTransTokens[trans.speakerId] || []).push(trans);
         }
 
-        // 6. Map translation to segments speaker-by-speaker
+        // 6. Map translation to segments speaker-by-speaker using timestamps
         for (const speakerId in speakerOrigSegs) {
           const origSegs = speakerOrigSegs[speakerId];
           const transTokens = speakerTransTokens[speakerId] || [];
 
-          // Join translation tokens into full text
+          if (origSegs.length === 0 || transTokens.length === 0) {
+            continue;
+          }
+
+          // Split original segments into sentences
+          const allOrigSentences: { segIndex: number; text: string }[] = [];
+          for (let segIndex = 0; segIndex < origSegs.length; segIndex++) {
+            const sentences = splitSentences(origSegs[segIndex].text);
+            if (sentences.length === 0) {
+              allOrigSentences.push({ segIndex, text: origSegs[segIndex].text });
+            } else {
+              for (const s of sentences) {
+                allOrigSentences.push({ segIndex, text: s });
+              }
+            }
+          }
+
+          // Join translation tokens and split into sentences
           const fullTranslationText = transTokens
             .map((t) => cleanText(t.text))
             .join("")
             .trim();
+          const translationSentences = splitSentences(fullTranslationText);
 
-          if (fullTranslationText.length > 0) {
-            const translationSentences = splitSentences(fullTranslationText);
+          // Map translation sentences to original segment indexes
+          const segmentTranslationParts: string[][] = origSegs.map(() => []);
 
-            for (let i = 0; i < origSegs.length; i++) {
-              if (i === origSegs.length - 1) {
-                // Last segment gets all remaining translation sentences joined
-                origSegs[i].translation = translationSentences
-                  .slice(i)
-                  .join(" ");
-              } else if (i < translationSentences.length) {
-                origSegs[i].translation = translationSentences[i];
-              }
+          for (let i = 0; i < allOrigSentences.length; i++) {
+            const origSent = allOrigSentences[i];
+            if (i < translationSentences.length) {
+              segmentTranslationParts[origSent.segIndex].push(translationSentences[i]);
             }
+          }
+
+          // If there are leftover translation sentences, append them to the last segment
+          if (translationSentences.length > allOrigSentences.length) {
+            const leftover = translationSentences.slice(allOrigSentences.length).join(" ");
+            if (leftover && segmentTranslationParts.length > 0) {
+              segmentTranslationParts[segmentTranslationParts.length - 1].push(leftover);
+            }
+          }
+
+          // Assign joined translation to segments
+          for (let i = 0; i < origSegs.length; i++) {
+            const joined = segmentTranslationParts[i].join(" ").trim();
+            origSegs[i].translation = joined || undefined;
           }
         }
 
