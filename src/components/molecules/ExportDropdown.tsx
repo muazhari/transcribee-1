@@ -53,9 +53,7 @@ export default function ExportDropdown({
               className="w-full text-left px-4 py-2 text-xs text-neutral-300 hover:text-white hover:bg-violet-600/25 transition disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed flex items-center gap-2 cursor-pointer"
             >
               <span>🔊</span>
-              <span>
-                {exportingAudio ? "Compiling..." : "Audio (.wav)"}
-              </span>
+              <span>{exportingAudio ? "Compiling..." : "Audio (.wav)"}</span>
             </button>
 
             <div className="px-3 py-1.5 text-[0.5625rem] font-bold text-neutral-500 uppercase tracking-widest border-t border-b border-white/5">

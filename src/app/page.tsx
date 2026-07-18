@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { db } from "../lib/services/db";
 import {
@@ -38,12 +38,6 @@ export default function Home() {
   );
 
   const isRecording = useAppSelector((state) => state.mediaControl.isRecording);
-  const isPaused = useAppSelector((state) => state.mediaControl.isPaused);
-
-  const isPausedRef = useRef(isPaused);
-  useEffect(() => {
-    isPausedRef.current = isPaused;
-  }, [isPaused]);
 
   const config = useAppSelector((state) => state.config);
 
@@ -123,7 +117,90 @@ export default function Home() {
     }
   };
 
-  const startRecording = async () => {
+  const startRecordingConnection = useCallback(async (offsetTimestamp: number) => {
+    if (!activeSession) return;
+
+    // Connect to Soniox STT WebSocket
+    sonioxStreamClient.connect(
+      {
+        apiKey: config.sonioxApiKey,
+        model: config.transcriptionModel,
+        languageHints: config.languageHints,
+        enableEndpointDetection: config.enableEndpointDetection,
+        enableLanguageIdentification: config.enableLanguageIdentification,
+        enableTranslation: config.enableTranslation,
+        translationMode: config.translationMode,
+        translationTargetLanguage: config.translationTargetLanguage,
+        translationLanguageA: config.translationLanguageA,
+        translationLanguageB: config.translationLanguageB,
+      },
+      {
+        onOpen: () => {
+          dispatch(startRecordingState());
+        },
+        onClose: async () => {
+          await audioCaptureManager.stop();
+          dispatch(stopRecordingState());
+        },
+        onError: () => {
+          dispatch(setStreamHealth("poor"));
+        },
+        onTokens: (
+          tokens: {
+            text: string;
+            speaker: string;
+            start_ms?: number;
+            end_ms?: number;
+            duration_ms?: number;
+            is_final: boolean;
+            translation_status?: "original" | "translation";
+            language: string;
+          }[],
+        ) => {
+          const mappedTokens = tokens.map((t) => {
+            const start = t.start_ms ?? 0;
+            const end =
+              t.end_ms ??
+              (t.duration_ms !== undefined ? start + t.duration_ms : start);
+
+            return {
+              id: crypto.randomUUID(),
+              sessionId: activeSession.id,
+              text: t.text,
+              speakerId: t.speaker,
+              startTimestamp: start + offsetTimestamp,
+              endTimestamp: end + offsetTimestamp,
+              duration: end - start,
+              isFinal: t.is_final,
+              translationStatus: t.translation_status,
+              language: t.language,
+              offsetTimestamp,
+            };
+          });
+
+          dispatch(updateTranscripts(mappedTokens));
+        },
+      },
+    );
+
+    // Start capture loop
+    await audioCaptureManager.start(
+      activeSession.id,
+      config.audioRouting,
+      (pcmData) => {
+        sonioxStreamClient.sendAudio(pcmData);
+      },
+      offsetTimestamp,
+    );
+  }, [activeSession, config, dispatch]);
+
+  const stopRecording = useCallback(async () => {
+    await audioCaptureManager.stop();
+    sonioxStreamClient.disconnect();
+    dispatch(stopRecordingState());
+  }, [dispatch]);
+
+  const startRecording = useCallback(async () => {
     if (!activeSession) {
       alert("Please load or create a session first.");
       return;
@@ -144,95 +221,14 @@ export default function Home() {
         offsetTimestamp = lastChunk.startTimestamp + lastChunkDurationMs;
       }
 
-      // Connect to Soniox STT WebSocket
-      sonioxStreamClient.connect(
-        {
-          apiKey: config.sonioxApiKey,
-          model: config.transcriptionModel,
-          languageHints: config.languageHints,
-          enableEndpointDetection: config.enableEndpointDetection,
-          enableLanguageIdentification: config.enableLanguageIdentification,
-          enableTranslation: config.enableTranslation,
-          translationMode: config.translationMode,
-          translationTargetLanguage: config.translationTargetLanguage,
-          translationLanguageA: config.translationLanguageA,
-          translationLanguageB: config.translationLanguageB,
-        },
-        {
-          onOpen: () => {
-            dispatch(startRecordingState());
-          },
-          onClose: async () => {
-            await audioCaptureManager.stop();
-            dispatch(stopRecordingState());
-          },
-          onError: () => {
-            dispatch(setStreamHealth("poor"));
-          },
-          onTokens: (
-            tokens: {
-              text: string;
-              speaker: string;
-              start_ms?: number;
-              end_ms?: number;
-              duration_ms?: number;
-              is_final: boolean;
-              translation_status?: "original" | "translation";
-              language: string;
-            }[],
-          ) => {
-            const mappedTokens = tokens.map((t) => {
-              const start = t.start_ms ?? 0;
-              const end =
-                t.end_ms ??
-                (t.duration_ms !== undefined ? start + t.duration_ms : start);
-
-              return {
-                id: crypto.randomUUID(),
-                sessionId: activeSession.id,
-                text: t.text,
-                speakerId: t.speaker,
-                startTimestamp: start + offsetTimestamp,
-                endTimestamp: end + offsetTimestamp,
-                duration: end - start,
-                isFinal: t.is_final,
-                translationStatus: t.translation_status,
-                language: t.language,
-                offsetTimestamp,
-              };
-            });
-
-            dispatch(updateTranscripts(mappedTokens));
-          },
-        },
-      );
-
-      // Start capture loop
-      await audioCaptureManager.start(
-        activeSession.id,
-        config.audioRouting,
-        (pcmData) => {
-          // Skip pushing raw frames to Soniox if recording is paused
-          if (!isPausedRef.current) {
-            sonioxStreamClient.sendAudio(pcmData);
-          }
-        },
-        () => isPausedRef.current,
-        offsetTimestamp,
-      );
+      await startRecordingConnection(offsetTimestamp);
     } catch (err: unknown) {
       console.error("Audio recording setup failed:", err);
       const errMsg = err instanceof Error ? err.message : String(err);
       alert(`Could not start recording: ${errMsg}`);
       await stopRecording();
     }
-  };
-
-  const stopRecording = async () => {
-    await audioCaptureManager.stop();
-    sonioxStreamClient.disconnect();
-    dispatch(stopRecordingState());
-  };
+  }, [activeSession, config, startRecordingConnection, stopRecording]);
 
   return (
     <main className="h-dvh w-full flex flex-col bg-neutral-900 font-sans overflow-hidden">

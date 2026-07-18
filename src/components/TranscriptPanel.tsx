@@ -1,14 +1,9 @@
 "use client";
 
 import React, { useRef, useEffect, useState } from "react";
-import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
+import { useAppSelector } from "../lib/store/storeHooks";
 import { AudioCaptureManager } from "../lib/services/audioCapture";
-import { togglePauseState } from "@/lib/store/slices/mediaControlSlice";
-import {
-  generateTxtContent,
-  generateSrtContent,
-  downloadFile,
-} from "../lib/utils/exportUtils";
+import { generateSrtContent, downloadFile } from "../lib/utils/exportUtils";
 
 import Badge from "./atoms/Badge";
 import ExportDropdown from "./molecules/ExportDropdown";
@@ -26,7 +21,6 @@ export default function TranscriptPanel({
   startRecording,
   stopRecording,
 }: TranscriptPanelProps) {
-  const dispatch = useAppDispatch();
   const activeSession = useAppSelector(
     (state) => state.persistence.activeSession,
   );
@@ -34,7 +28,6 @@ export default function TranscriptPanel({
     (state) => state.transcription.transcripts,
   );
   const isRecording = useAppSelector((state) => state.mediaControl.isRecording);
-  const isPaused = useAppSelector((state) => state.mediaControl.isPaused);
   const streamHealth = useAppSelector(
     (state) => state.mediaControl.streamHealth,
   );
@@ -54,9 +47,13 @@ export default function TranscriptPanel({
     const el = containerRef.current;
     if (!el) return;
     // If user is within 3.75rem (60px) of the bottom, lock scroll. Otherwise unlock.
-    const rootFontSize = typeof window !== "undefined" ? (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) : 16;
+    const rootFontSize =
+      typeof window !== "undefined"
+        ? parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+        : 16;
     const threshold = 3.75 * rootFontSize;
-    const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+    const isAtBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
     isAutoScrollLocked.current = isAtBottom;
   };
 
@@ -77,16 +74,6 @@ export default function TranscriptPanel({
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
-  const handleExportTxt = () => {
-    if (!activeSession) return;
-    const title =
-      activeSession.title ||
-      `Session - ${new Date(activeSession.createdAt).toLocaleDateString()}`;
-    const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-transcript.txt`;
-    const content = generateTxtContent(transcripts, title);
-    downloadFile(content, filename, "text/plain");
   };
 
   const handleExportSrt = () => {
@@ -173,12 +160,6 @@ export default function TranscriptPanel({
           {/* Status badges */}
           <div className="flex items-center gap-3 shrink-0">
             {isRecording && (
-              <Badge variant="red" pulsing>
-                REC
-              </Badge>
-            )}
-            {isPaused && <Badge variant="yellow">Paused</Badge>}
-            {isRecording && (
               <Badge variant={streamHealth === "good" ? "green" : "red"}>
                 Health: {streamHealth.toUpperCase()}
               </Badge>
@@ -194,7 +175,6 @@ export default function TranscriptPanel({
             hasTranscripts={transcripts.length > 0}
           />
         </div>
-
       </div>
 
       {/* Live Transcript Content Panel */}
@@ -226,9 +206,7 @@ export default function TranscriptPanel({
       {/* Dashboard Recording controls */}
       <RecordingControls
         isRecording={isRecording}
-        isPaused={isPaused}
         onStartStop={isRecording ? stopRecording : startRecording}
-        onPauseResume={() => dispatch(togglePauseState())}
       />
     </div>
   );

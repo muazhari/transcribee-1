@@ -10,7 +10,6 @@ export class AudioCaptureManager {
   private sessionId: string | null = null;
   private recordedSamples: number = 0;
   private offsetTimestamp: number = 0;
-  private isPausedCallback: (() => boolean) | null = null;
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
   private pendingSaves: Promise<void>[] = [];
 
@@ -18,7 +17,6 @@ export class AudioCaptureManager {
     sessionId: string,
     routing: "mix" | "mic-only" | "speaker-only",
     onAudioData: (data: Int16Array) => void,
-    isPaused: () => boolean,
     offsetTimestamp: number = 0,
   ): Promise<void> {
     if (typeof window === "undefined") return;
@@ -28,13 +26,12 @@ export class AudioCaptureManager {
 
     this.sessionId = sessionId;
     this.onAudioDataCallback = onAudioData;
-    this.isPausedCallback = isPaused;
     this.recordedSamples = 0;
     this.offsetTimestamp = offsetTimestamp;
 
     // Create the AudioContext. Request 16kHz context if browser supports it.
     const AudioContextClass =
-      window.AudioContext || (window as any).webkitAudioContext;
+      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     this.audioContext = new AudioContextClass({ sampleRate: 16000 });
     const contextSampleRate = this.audioContext.sampleRate;
 
@@ -140,8 +137,6 @@ export class AudioCaptureManager {
 
       // Handle raw buffer messages from the processor
       this.processorNode.port.onmessage = (event) => {
-        if (this.isPausedCallback?.()) return;
-
         const inputData = event.data as Float32Array;
         const downsampled = this.downsample(
           inputData,
@@ -218,7 +213,6 @@ export class AudioCaptureManager {
     // 6. Reset states
     this.sessionId = null;
     this.onAudioDataCallback = null;
-    this.isPausedCallback = null;
     this.recordedSamples = 0;
     this.offsetTimestamp = 0;
   }
@@ -329,7 +323,7 @@ export class AudioCaptureManager {
 
     // Play snippet using a short-lived AudioContext
     const playCtx = new (
-      window.AudioContext || (window as any).webkitAudioContext
+      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     )();
     try {
       const buffer = playCtx.createBuffer(1, snippet.length, SAMPLE_RATE);

@@ -2,7 +2,6 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export interface MediaControlState {
   isRecording: boolean;
-  isPaused: boolean;
   micConnected: boolean;
   speakerConnected: boolean;
   streamHealth: "good" | "poor" | "none";
@@ -10,7 +9,6 @@ export interface MediaControlState {
 
 const initialState: MediaControlState = {
   isRecording: false,
-  isPaused: false,
   micConnected: false,
   speakerConnected: false,
   streamHealth: "none",
@@ -22,16 +20,11 @@ export const mediaControlSlice = createSlice({
   reducers: {
     startRecordingState: (state) => {
       state.isRecording = true;
-      state.isPaused = false;
       state.streamHealth = "good";
     },
     stopRecordingState: (state) => {
       state.isRecording = false;
-      state.isPaused = false;
       state.streamHealth = "none";
-    },
-    togglePauseState: (state) => {
-      state.isPaused = !state.isPaused;
     },
     setDeviceStatus: (
       state,
@@ -53,7 +46,6 @@ export const mediaControlSlice = createSlice({
 export const {
   startRecordingState,
   stopRecordingState,
-  togglePauseState,
   setDeviceStatus,
   setStreamHealth,
 } = mediaControlSlice.actions;

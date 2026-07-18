@@ -3,11 +3,7 @@
 import React, { useRef, useEffect, useState } from "react";
 import { useAppSelector } from "../lib/store/storeHooks";
 import { AudioCaptureManager } from "../lib/services/audioCapture";
-import {
-  generateTxtContent,
-  generateSrtContent,
-  downloadFile,
-} from "../lib/utils/exportUtils";
+import { generateSrtContent, downloadFile } from "../lib/utils/exportUtils";
 
 import PlaybackControls from "./molecules/PlaybackControls";
 import TranscriptBlock from "./molecules/TranscriptBlock";
@@ -106,7 +102,11 @@ export default function PlaybackPanel() {
       );
       if (card) {
         const container = scrollContainerRef.current;
-        const rootFontSize = typeof window !== "undefined" ? (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) : 16;
+        const rootFontSize =
+          typeof window !== "undefined"
+            ? parseFloat(getComputedStyle(document.documentElement).fontSize) ||
+              16
+            : 16;
         const offset = 0.75 * rootFontSize; // 0.75rem (12px) breathing room offset at top
         const targetScrollTop = card.offsetTop - offset;
         container.scrollTo({
