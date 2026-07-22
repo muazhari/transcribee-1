@@ -6,8 +6,8 @@ import {
 } from "@langchain/core/messages";
 
 export const tokenLimits: Record<string, number> = {
-  "gemini-3.5-flash": 1000000,
-  "gemini-3.1-flash-lite": 1000000,
+  "gemini-3.6-flash": 1000000,
+  "gemini-3.5-flash-lite": 1000000,
   "gemini-3.1-pro-preview": 2000000,
 };
 

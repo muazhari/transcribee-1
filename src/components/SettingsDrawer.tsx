@@ -156,24 +156,6 @@ export default function SettingsDrawer({
           onSubmit={handleSubmit(onSubmit)}
           className="p-6 flex-1 flex flex-col gap-6"
         >
-          {/* Soniox API Key */}
-          <Input
-            type={showSonioxKey ? "text" : "password"}
-            label="Soniox API Key"
-            error={errors.sonioxApiKey?.message}
-            {...register("sonioxApiKey")}
-            placeholder="Enter Soniox API Key"
-            rightIcon={
-              <button
-                type="button"
-                onClick={() => setShowSonioxKey(!showSonioxKey)}
-                className="text-neutral-400 hover:text-white text-xs cursor-pointer select-none"
-              >
-                {showSonioxKey ? "Hide" : "Show"}
-              </button>
-            }
-          />
-
           {/* Google AI API Key */}
           <Input
             type={showGoogleKey ? "text" : "password"}
@@ -192,16 +174,34 @@ export default function SettingsDrawer({
             }
           />
 
+          {/* Soniox API Key */}
+          <Input
+            type={showSonioxKey ? "text" : "password"}
+            label="Soniox API Key"
+            error={errors.sonioxApiKey?.message}
+            {...register("sonioxApiKey")}
+            placeholder="Enter Soniox API Key"
+            rightIcon={
+              <button
+                type="button"
+                onClick={() => setShowSonioxKey(!showSonioxKey)}
+                className="text-neutral-400 hover:text-white text-xs cursor-pointer select-none"
+              >
+                {showSonioxKey ? "Hide" : "Show"}
+              </button>
+            }
+          />
+
           {/* Model Selections */}
           <div className="grid grid-cols-2 gap-4">
             <Select
               label="Gemini Model"
               error={errors.aiModel?.message}
               options={[
-                { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash" },
+                { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash" },
                 {
-                  value: "gemini-3.1-flash-lite",
-                  label: "Gemini 3.1 Flash Lite",
+                  value: "gemini-3.5-flash-lite",
+                  label: "Gemini 3.5 Flash Lite",
                 },
                 {
                   value: "gemini-3.1-pro-preview",
