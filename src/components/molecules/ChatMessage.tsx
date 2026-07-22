@@ -1,4 +1,6 @@
 import React from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface ChatMessageProps {
   role?: "user" | "assistant";
@@ -46,7 +48,61 @@ export default function ChatMessage({
             : "AI Assistant"
           : "You"}
       </span>
-      <p className="whitespace-pre-wrap">{content}</p>
+      <div className="markdown-content text-sm leading-relaxed space-y-2 break-words">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            p: ({ children }) => (
+              <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>
+            ),
+            ul: ({ children }) => (
+              <ul className="list-disc list-inside mb-2 space-y-1">
+                {children}
+              </ul>
+            ),
+            ol: ({ children }) => (
+              <ol className="list-decimal list-inside mb-2 space-y-1">
+                {children}
+              </ol>
+            ),
+            li: ({ children }) => <li className="ml-1">{children}</li>,
+            code: ({ className, children }) => {
+              const isBlock = Boolean(
+                className && className.includes("language-"),
+              );
+              if (isBlock) {
+                return (
+                  <code
+                    className={`${className} block bg-black/40 p-2.5 rounded-lg text-xs font-mono overflow-x-auto my-2 border border-white/10`}
+                  >
+                    {children}
+                  </code>
+                );
+              }
+              return (
+                <code className="bg-black/30 px-1.5 py-0.5 rounded text-xs font-mono">
+                  {children}
+                </code>
+              );
+            },
+            pre: ({ children }) => (
+              <pre className="my-2 overflow-x-auto">{children}</pre>
+            ),
+            a: ({ href, children }) => (
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:opacity-80"
+              >
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
     </div>
   );
 }
