@@ -1,8 +1,8 @@
 # Transcribee 🐝
 
-> **Local-First, Real-Time Audio Transcription, Multi-Language Translation & AI Chat Assistant.**
+> **Local-First, Real-Time Multilingual Code-switching Audio Transcriber, Diarization, Translation, Playback, & AI Chat.**
 
-Transcribee is a client-side orchestrator that runs entirely in the browser sandbox. It handles high-precision audio streaming, real-time speaker diarization, translation, token context guardrails, and client-side relational persistence—all without relying on intermediate application servers.
+Transcribee is a client-side web app that runs entirely in the browser. It handles audio streaming, speaker diarization, translation, playback, AI chat with FIFO context, and client-side persistence—all without relying on intermediate application servers.
 
 ---
 
@@ -37,7 +37,7 @@ For smaller viewports, the interface automatically collapses into a fluid, tabbe
 ## ⚡ Core Features
 
 1. **Audio Capture & Loopback Mixing**  
-   Captures physical microphone inputs alongside software/system output audio (screen share loopback) and dynamically mixes them down to mono/stereo linear PCM (16kHz/44.1kHz) required by speech engines.
+   Captures physical microphone inputs alongside software/system output audio (screen share loopback) and dynamically mixes them down to mono linear PCM (16kHz) required by speech engines.
 
 2. **Resilient Soniox Live STT Client**  
    Maintains a duplex WebSocket connection directly to Soniox STT to stream real-time word-level tokens, speaker diarization tags ("Speaker 1", "Speaker 2"), and translation segments.
@@ -46,13 +46,13 @@ For smaller viewports, the interface automatically collapses into a fluid, tabbe
    Maps textual tokens with absolute audio offset intervals (`start_ms` and `duration_ms`). Clicking any word in the transcript queries the local IndexedDB/OPFS audio cache and plays back that specific micro-segment.
 
 4. **Smart FIFO Context Manager**  
-   Calculates prompt token sizes locally. Displays a warning status when the compiled transcript reaches **85%** of Gemini's context window, and executes First-In, First-Out (FIFO) truncation at **100%** capacity to maintain context integrity.
+   Calculates prompt token sizes locally. Displays a warning status when the compiled transcript reaches **85%** of the LLM's context window, and executes First-In, First-Out (FIFO) truncation at **100%** capacity to maintain context integrity.
 
-5. **Gemini AI Chat Agent**  
+5. **AI Chat Agent**  
    Invokes the `ChatGoogleGenerativeAI` model dynamically via LangChain JS. Streams responses to natural-language user queries directly within the browser using the session transcript as local context.
 
-6. **Offline Persistence (Prisma WASM)**  
-   Leverages Prisma Client compiled to WebAssembly along with a client-side PGlite/IndexedDB database engine to store session structures, transcript segments, AI chat logs, and binary audio buffers.
+6. **Offline Persistence**  
+   Leverages a client-side IndexedDB database engine to store session structures, transcript segments, AI chat logs, and binary audio buffers.
 
 ---
 
@@ -66,15 +66,15 @@ For smaller viewports, the interface automatically collapses into a fluid, tabbe
                                                | Raw Audio Buffer
                                                v
 +-----------------------+  Audio Stream +------+------+   Real-Time Tokens  +------------------------+
-|  Soniox Live STT Agent | ------------> |  RTK Global | <------------------ |   Gemini Chat Agent     |
-|   (WebSocket Engine)  | <------------ | State Engine | ----------------->  |   (LangChain JS Client)|
+| Soniox Live STT Agent | ------------> |  RTK Global  | <----------------- |     LLM Chat Agent     |
+|   (WebSocket Engine)  | <------------ | State Engine | -----------------> |  (LangChain JS Client) |
 +-----------------------+  Config / Keys +------+------+   Context Stream   +------------------------+
                                                |
                                                | Structured Payload Data
                                                v
                            +-------------------+-------------------+
                            |    Local-First Persistence Agent      |
-                           |   (Prisma WASM + PGlite / IndexedDB)  |
+                           |             (IndexedDB)               |
                            +---------------------------------------+
 ```
 
@@ -111,5 +111,7 @@ Transcribee uses Playwright to run end-to-end user flows with mock credentials a
 
 ```bash
 # Run tests
-npx playwright test
+npx run test
+# or
+bun run test
 ```

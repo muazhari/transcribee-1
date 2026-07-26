@@ -229,19 +229,15 @@ export default function ChatPanel() {
   return (
     <div className="w-full lg:w-96 h-full bg-neutral-950 lg:border-l border-white/10 flex flex-col text-white">
       {/* Header */}
-      <div className="px-6 pt-5 pb-4 border-b border-white/10 flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-bold text-sm tracking-wide bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent uppercase">
-            AI Assistant
-          </h3>
-          {chatHistory.length > 0 && (
-            <Button onClick={handleClear} variant="clear" size="none">
-              Clear
-            </Button>
-          )}
-        </div>
+      <div className="px-6 pt-5 pb-4 border-b border-white/10 flex flex-row gap-3">
         {/* Token capacity meter */}
         <TokenMeter tokenCount={tokenCount} tokenLimit={tokenLimit} />
+
+        {chatHistory.length > 0 && (
+          <Button onClick={handleClear} variant="clear" size="none">
+            Clear
+          </Button>
+        )}
       </div>
 
       {/* Warnings & Notices */}
@@ -270,7 +266,7 @@ export default function ChatPanel() {
               Ask questions about this transcript
             </p>
             <p className="text-xs text-neutral-500 mt-1 max-w-xs">
-              Gemini will reference the full transcript as context.
+              AI will reference the full transcript as context.
             </p>
 
             {/* Suggestions */}

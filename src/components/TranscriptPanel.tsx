@@ -80,7 +80,7 @@ export default function TranscriptPanel({
     if (!activeSession) return;
     const title =
       activeSession.title ||
-      `Session - ${new Date(activeSession.createdAt).toLocaleDateString()}`;
+      `Session - ${new Date(activeSession.createdAt).toLocaleString()}`;
     const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-transcript.srt`;
     const content = generateSrtContent(transcripts);
     downloadFile(content, filename, "text/srt");
@@ -90,7 +90,7 @@ export default function TranscriptPanel({
     if (!activeSession) return;
     const title =
       activeSession.title ||
-      `Session - ${new Date(activeSession.createdAt).toLocaleDateString()}`;
+      `Session - ${new Date(activeSession.createdAt).toLocaleString()}`;
     const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-transcript.json`;
     const content = JSON.stringify(transcripts, null, 2);
     downloadFile(content, filename, "application/json");
@@ -106,7 +106,7 @@ export default function TranscriptPanel({
       if (url) {
         const title =
           activeSession.title ||
-          `Session - ${new Date(activeSession.createdAt).toLocaleDateString()}`;
+          `Session - ${new Date(activeSession.createdAt).toLocaleString()}`;
         const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}.wav`;
         const a = document.createElement("a");
         a.href = url;
@@ -152,7 +152,7 @@ export default function TranscriptPanel({
               onChange={(e) => onRenameSession(e.target.value)}
               placeholder={`Session - ${new Date(
                 activeSession.createdAt,
-              ).toLocaleDateString()}`}
+              ).toLocaleString()}`}
               className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 w-full text-white placeholder-neutral-500 transition-colors truncate"
             />
           </div>

@@ -15,13 +15,8 @@ export default function SessionItem({
   onSelect,
   onDelete,
 }: SessionItemProps) {
-  const dateStr = new Date(session.createdAt).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const defaultTitle = `Session - ${dateStr}`;
+  const dateStr = new Date(session.createdAt).toLocaleString();
+  const defaultTitle = `Session - ${new Date(session.createdAt).toLocaleString()}`;
 
   return (
     <div

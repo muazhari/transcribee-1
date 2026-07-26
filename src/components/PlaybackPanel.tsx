@@ -3,7 +3,6 @@
 import React, { useRef, useEffect, useState } from "react";
 import { useAppSelector } from "../lib/store/storeHooks";
 import { AudioCaptureManager } from "../lib/services/audioCapture";
-import { generateSrtContent, downloadFile } from "../lib/utils/exportUtils";
 
 import PlaybackControls from "./molecules/PlaybackControls";
 import TranscriptBlock from "./molecules/TranscriptBlock";
@@ -199,14 +198,6 @@ export default function PlaybackPanel() {
           style={{ display: "none" }}
         />
       )}
-
-      {/* Header Info */}
-      <div className="px-6 py-2 border-b border-white/10 shrink-0 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-white">
-          {activeSession.title ||
-            `Session - ${new Date(activeSession.createdAt).toLocaleDateString()}`}
-        </h2>
-      </div>
 
       {/* Main Control Panel Card */}
       <div className="px-4 sm:px-6 py-3 sm:py-4 shrink-0">
