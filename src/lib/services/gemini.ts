@@ -17,12 +17,16 @@ export interface GeminiQueryConfig {
   context: string;
   chatHistory: { role: "user" | "assistant"; content: string }[];
   question: string;
+  signal?: AbortSignal;
 }
 
 export async function askGeminiStream(
   config: GeminiQueryConfig,
   onChunk: (chunk: string) => void,
+  signal?: AbortSignal,
 ): Promise<string> {
+  const activeSignal = signal || config.signal;
+
   if (
     typeof window !== "undefined" &&
     (window as unknown as { __PLAYWRIGHT_TEST__?: boolean }).__PLAYWRIGHT_TEST__
@@ -31,6 +35,9 @@ export async function askGeminiStream(
       "This is a mock response from Gemini based on the transcript.";
     const chunks = mockResponse.split(" ");
     for (let i = 0; i < chunks.length; i++) {
+      if (activeSignal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+      }
       const chunk = chunks[i] + " ";
       await new Promise((resolve) => setTimeout(resolve, 50));
       onChunk(chunk);
@@ -53,7 +60,7 @@ export async function askGeminiStream(
   // Compile prompt message sequence
   const messages = [
     new SystemMessage(
-      `You are an AI Assistant answering queries based on the following real-time transcript summary:\n\n${config.context}`,
+      `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${config.context}`,
     ),
     ...config.chatHistory.map((msg) =>
       msg.role === "assistant"
@@ -64,10 +71,13 @@ export async function askGeminiStream(
   ];
 
   // Stream responses using LangChain stream method
-  const stream = await model.stream(messages);
+  const stream = await model.stream(messages, { signal: activeSignal });
 
   let fullResponse = "";
   for await (const chunk of stream) {
+    if (activeSignal?.aborted) {
+      throw new DOMException("Aborted", "AbortError");
+    }
     const text = chunk.content;
     if (typeof text === "string" && text) {
       fullResponse += text;

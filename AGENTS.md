@@ -119,7 +119,7 @@ Manages standalone semantic interrogation interactions over the compiled session
 const promptTemplate = ChatPromptTemplate.fromMessages([
   [
     "system",
-    "You are an AI Assistant answering queries based on the following real-time transcript summary:\n\n{context}",
+    "You are an AI Assistant answering queries based on the following real-time transcript:\n\n{context}",
   ],
   ["placeholder", "{chat_history}"],
   ["human", "{question}"],

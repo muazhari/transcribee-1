@@ -57,7 +57,7 @@ export const chatContextSlice = createSlice({
 
       state.tokenLimit = tokenLimits[aiModel] || 0;
 
-      const systemPrompt = `You are an AI Assistant answering queries based on the following real-time transcript summary:\n\n${transcriptsText}`;
+      const systemPrompt = `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${transcriptsText}`;
       const totalInputText = `${systemPrompt}\n${chatHistoryText}\n${questionText}`;
 
       // Simple client-side token count approximation: 1 token = 4 characters

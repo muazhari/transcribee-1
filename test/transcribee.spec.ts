@@ -356,3 +356,47 @@ test("Consecutive recording starts in the same session: verify correct offsets a
     page.locator('button:has-text("Start Recording")'),
   ).toBeVisible();
 });
+
+test("Chat panel cancel button during AI response generation", async ({
+  page,
+}) => {
+  // 1. Load application home page
+  await page.goto("/", { waitUntil: "load" });
+  await page
+    .locator("text=Transcribee")
+    .waitFor({ state: "visible", timeout: 30000 });
+
+  // 2. Open Settings and save credentials
+  await page.click('button[title="Open Settings"]');
+  await page.fill(
+    'input[placeholder="Enter Soniox API Key"]',
+    "test-soniox-key-xyz",
+  );
+  await page.fill(
+    'input[placeholder="Enter Google AI API Key"]',
+    "test-gemini-key-xyz",
+  );
+  await page.click('button:has-text("Save configurations")');
+
+  // 3. Start a new session
+  await page.click('button:has-text("New Session")');
+  await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
+
+  // 4. Fill question and click Send
+  await page.fill(
+    'input[placeholder="Type your question..."]',
+    "Explain this in detail",
+  );
+  await page.click('button:has-text("Send")');
+
+  // 5. Verify Cancel button appears while generating
+  const cancelButton = page.locator('button:has-text("Cancel")');
+  await expect(cancelButton).toBeVisible();
+
+  // 6. Click Cancel button
+  await cancelButton.click();
+
+  // 7. Verify generation is cancelled and Cancel button reverts to Send button
+  await expect(page.locator("text=Cancelled")).toBeVisible();
+  await expect(page.locator('button:has-text("Send")')).toBeVisible();
+});

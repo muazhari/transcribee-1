@@ -87,7 +87,7 @@ export default function ChatPanel() {
         );
         const slicedChat = chatHistory.slice(chatSlice);
 
-        const systemPrompt = `You are an AI Assistant answering queries based on the following real-time transcript summary:\n\n${slicedTransText}`;
+        const systemPrompt = `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${slicedTransText}`;
         const chatHistoryText = slicedChat.map((msg) => msg.content).join("\n");
         const totalInputText = `${systemPrompt}\n${chatHistoryText}\n${question}`;
         return Math.ceil(totalInputText.length / 4);
@@ -139,6 +139,24 @@ export default function ChatPanel() {
     dispatch,
   ]);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Clean up abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  const handleCancel = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
   const handleAsk = async (queryText: string) => {
     if (!queryText.trim()) return;
     if (!activeSession) {
@@ -150,6 +168,9 @@ export default function ChatPanel() {
       return;
     }
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setQuestion("");
     dispatch(appendChatMessage({ role: "user", content: queryText }));
     dispatch(setLoading(true));
@@ -160,8 +181,8 @@ export default function ChatPanel() {
       generateSrtContent(transcripts) ||
       "No transcription records available yet.";
 
+    let currentResponse = "";
     try {
-      let currentResponse = "";
       const result = await askGeminiStream(
         {
           apiKey: config.googleApiKey,
@@ -169,11 +190,13 @@ export default function ChatPanel() {
           context: contextText,
           chatHistory: chatHistory,
           question: queryText,
+          signal: controller.signal,
         },
         (chunk) => {
           currentResponse += chunk;
           setStreamedResponse(currentResponse);
         },
+        controller.signal,
       );
 
       // Complete message
@@ -191,16 +214,48 @@ export default function ChatPanel() {
       await db.saveChatPair(chat);
       dispatch(addChatPairToActive(chat));
     } catch (error: unknown) {
-      console.error("Gemini Chat Error:", error);
-      const errMsg = error instanceof Error ? error.message : String(error);
-      dispatch(
-        appendChatMessage({
-          role: "assistant",
-          content: `Error: Failed to process query. ${errMsg}`,
-        }),
-      );
+      const isAborted =
+        (error instanceof Error &&
+          (error.name === "AbortError" || error.message.includes("Aborted"))) ||
+        controller.signal.aborted;
+
+      if (isAborted) {
+        if (currentResponse.trim()) {
+          const cancelledContent = `${currentResponse} *(Chat cancelled)*`;
+          dispatch(
+            appendChatMessage({ role: "assistant", content: cancelledContent }),
+          );
+          const chat = {
+            id: crypto.randomUUID(),
+            sessionId: activeSession.id,
+            question: queryText,
+            answer: cancelledContent,
+            timestamp: new Date(),
+          };
+          await db.saveChatPair(chat);
+          dispatch(addChatPairToActive(chat));
+        } else {
+          dispatch(
+            appendChatMessage({
+              role: "assistant",
+              content: "*(Chat cancelled)*",
+            }),
+          );
+        }
+      } else {
+        console.error("Gemini Chat Error:", error);
+        const errMsg = error instanceof Error ? error.message : String(error);
+        dispatch(
+          appendChatMessage({
+            role: "assistant",
+            content: `Error: Failed to process query. ${errMsg}`,
+          }),
+        );
+      }
     } finally {
+      setStreamedResponse("");
       dispatch(setLoading(false));
+      abortControllerRef.current = null;
     }
   };
 
@@ -310,7 +365,11 @@ export default function ChatPanel() {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            handleAsk(question);
+            if (isLoading) {
+              handleCancel();
+            } else {
+              handleAsk(question);
+            }
           }}
           className="flex items-center gap-2"
         >
@@ -320,18 +379,32 @@ export default function ChatPanel() {
             onChange={(e) => setQuestion(e.target.value)}
             disabled={!activeSession || isLoading}
             variant="dark"
-            className="!px-4 !py-3 !text-sm"
-            placeholder="Type your question..."
+            className="!px-4 !py-3 !text-sm flex-1"
+            placeholder={
+              isLoading ? "Generating response..." : "Type your question..."
+            }
           />
-          <Button
-            type="submit"
-            disabled={!activeSession || !question.trim() || isLoading}
-            variant="primary"
-            size="none"
-            className="!p-3 !rounded-lg"
-          >
-            Send
-          </Button>
+          {isLoading ? (
+            <Button
+              type="button"
+              onClick={handleCancel}
+              variant="danger"
+              size="none"
+              className="!p-3 !rounded-lg shrink-0"
+            >
+              Cancel
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              disabled={!activeSession || !question.trim()}
+              variant="primary"
+              size="none"
+              className="!p-3 !rounded-lg shrink-0"
+            >
+              Send
+            </Button>
+          )}
         </form>
       </div>
     </div>
