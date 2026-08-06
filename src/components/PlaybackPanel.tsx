@@ -163,13 +163,6 @@ export default function PlaybackPanel() {
     }
   };
 
-  const formatMsToTime = (ms: number) => {
-    const totalSecs = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
   if (!activeSession) {
     return (
       <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white justify-center items-center p-8 text-neutral-500">
@@ -239,12 +232,9 @@ export default function PlaybackPanel() {
           transcripts.map((transcript) => (
             <TranscriptBlock
               key={transcript.id}
-              idPrefix="transcript-card-"
               transcript={transcript}
               isActive={activeTranscriptId === transcript.id}
-              onClickBlock={handleTranscriptClick}
-              onClickWord={handleTranscriptClick}
-              formatTime={formatMsToTime}
+              onSeekToTimestamp={handleTranscriptClick}
             />
           ))
         )}

@@ -69,13 +69,6 @@ export default function TranscriptPanel({
     );
   };
 
-  const formatTime = (ms: number) => {
-    const totalSecs = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
   const handleExportSrt = () => {
     if (!activeSession) return;
     const title =
@@ -196,8 +189,7 @@ export default function TranscriptPanel({
             <TranscriptBlock
               key={transcript.id}
               transcript={transcript}
-              onClickWord={handleTranscriptClick}
-              formatTime={formatTime}
+              onPlaySegment={handleTranscriptClick}
             />
           ))
         )}
