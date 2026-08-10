@@ -12,6 +12,8 @@ export class AudioCaptureManager {
   private offsetTimestamp: number = 0;
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
   private pendingSaves: Promise<void>[] = [];
+  private resamplerPosition: number = 0;
+  private resamplerLastSample: number = 0;
 
   async start(
     sessionId: string,
@@ -28,11 +30,15 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = onAudioData;
     this.recordedSamples = 0;
     this.offsetTimestamp = offsetTimestamp;
+    this.resamplerPosition = 0;
+    this.resamplerLastSample = 0;
 
-    // Create the AudioContext. Request 16kHz context if browser supports it.
+    // Create the AudioContext using native hardware sample rate.
+    // Avoid forcing requested sampleRate: 16000 because Chromium's MediaStreamAudioSourceNode
+    // internal resampler ring buffer experiences clock drift over time, causing static noise after a few minutes.
     const AudioContextClass =
       window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    this.audioContext = new AudioContextClass({ sampleRate: 16000 });
+    this.audioContext = new AudioContextClass();
     const contextSampleRate = this.audioContext.sampleRate;
 
     try {
@@ -94,7 +100,7 @@ export class AudioCaptureManager {
 
           process(inputs) {
             const input = inputs[0];
-            if (!input || input.length === 0) return true;
+            if (!input || input.length === 0 || !input[0]) return true;
 
             const channelCount = input.length;
             const sampleCount = input[0].length;
@@ -102,9 +108,11 @@ export class AudioCaptureManager {
             for (let i = 0; i < sampleCount; i++) {
               let sum = 0;
               for (let c = 0; c < channelCount; c++) {
-                sum += input[c][i];
+                if (input[c]) {
+                  sum += input[c][i];
+                }
               }
-              this.buffer[this.bufferIndex++] = sum / channelCount;
+              this.buffer[this.bufferIndex++] = sum / (channelCount || 1);
 
               if (this.bufferIndex >= this.bufferSize) {
                 this.port.postMessage(this.buffer);
@@ -215,30 +223,36 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = null;
     this.recordedSamples = 0;
     this.offsetTimestamp = 0;
+    this.resamplerPosition = 0;
+    this.resamplerLastSample = 0;
   }
 
-  // Downsampling using linear interpolation resampler to prevent aliasing robotic buzz
+  // Downsampling using stateful linear interpolation resampler to prevent aliasing robotic buzz and boundary phase clicks
   private downsample(
     buffer: Float32Array,
     inputSampleRate: number,
     outputSampleRate: number,
   ): Float32Array {
     if (inputSampleRate === outputSampleRate) return buffer;
+    if (buffer.length === 0) return buffer;
 
     const ratio = inputSampleRate / outputSampleRate;
-    const newLength = Math.round(buffer.length / ratio);
-    const result = new Float32Array(newLength);
+    const outputSamples: number[] = [];
 
-    for (let i = 0; i < newLength; i++) {
-      const sourceIndex = i * ratio;
-      const indexFloor = Math.floor(sourceIndex);
-      const indexNext = Math.min(buffer.length - 1, indexFloor + 1);
-      const fraction = sourceIndex - indexFloor;
-
-      result[i] =
-        buffer[indexFloor] * (1 - fraction) + buffer[indexNext] * fraction;
+    let pos = this.resamplerPosition;
+    while (Math.floor(pos) + 1 < buffer.length) {
+      const i1 = Math.floor(pos);
+      const fraction = pos - i1;
+      const s1 = i1 < 0 ? this.resamplerLastSample : buffer[i1];
+      const s2 = buffer[i1 + 1];
+      outputSamples.push(s1 * (1 - fraction) + s2 * fraction);
+      pos += ratio;
     }
-    return result;
+
+    this.resamplerPosition = pos - buffer.length;
+    this.resamplerLastSample = buffer[buffer.length - 1];
+
+    return new Float32Array(outputSamples);
   }
 
   // Convert Float32Array [-1.0, 1.0] to Int16Array PCM
