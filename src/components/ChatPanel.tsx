@@ -199,20 +199,20 @@ export default function ChatPanel() {
         controller.signal,
       );
 
-      // Complete message
-      dispatch(appendChatMessage({ role: "assistant", content: result }));
-      setStreamedResponse("");
-
-      // Save Chat pair to DB
-      const chat = {
-        id: crypto.randomUUID(),
-        sessionId: activeSession.id,
-        question: queryText,
-        answer: result,
-        timestamp: new Date(),
+      const persistChat = async (answer: string) => {
+        dispatch(appendChatMessage({ role: "assistant", content: answer }));
+        const chat = {
+          id: crypto.randomUUID(),
+          sessionId: activeSession.id,
+          question: queryText,
+          answer,
+          timestamp: new Date(),
+        };
+        await db.saveChatPair(chat);
+        dispatch(addChatPairToActive(chat));
       };
-      await db.saveChatPair(chat);
-      dispatch(addChatPairToActive(chat));
+
+      await persistChat(result);
     } catch (error: unknown) {
       const isAborted =
         (error instanceof Error &&
@@ -221,17 +221,14 @@ export default function ChatPanel() {
 
       if (isAborted) {
         if (currentResponse.trim()) {
-          const cancelledContent = `${currentResponse} *(Chat cancelled)*`;
-          dispatch(
-            appendChatMessage({ role: "assistant", content: cancelledContent }),
-          );
           const chat = {
             id: crypto.randomUUID(),
             sessionId: activeSession.id,
             question: queryText,
-            answer: cancelledContent,
+            answer: `${currentResponse} *(Chat cancelled)*`,
             timestamp: new Date(),
           };
+          dispatch(appendChatMessage({ role: "assistant", content: chat.answer }));
           await db.saveChatPair(chat);
           dispatch(addChatPairToActive(chat));
         } else {

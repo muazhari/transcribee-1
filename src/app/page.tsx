@@ -28,6 +28,13 @@ import TranscriptPanel from "../components/TranscriptPanel";
 import ChatPanel from "../components/ChatPanel";
 import PlaybackPanel from "../components/PlaybackPanel";
 
+const MOBILE_TABS = [
+  { id: "sessions", label: "🏠 Home" },
+  { id: "transcription", label: "🎙️ Live Session" },
+  { id: "playback", label: "🔊 Playback Session" },
+  { id: "chat", label: "🤖 AI Chat" },
+] as const;
+
 export default function Home() {
   const dispatch = useAppDispatch();
   const activeSession = useAppSelector(
@@ -123,40 +130,18 @@ export default function Home() {
     // Connect to Soniox STT WebSocket
     sonioxStreamClient.connect(
       {
+        ...config,
         apiKey: config.sonioxApiKey,
         model: config.transcriptionModel,
-        languageHints: config.languageHints,
-        enableEndpointDetection: config.enableEndpointDetection,
-        enableLanguageIdentification: config.enableLanguageIdentification,
-        enableTranslation: config.enableTranslation,
-        translationMode: config.translationMode,
-        translationTargetLanguage: config.translationTargetLanguage,
-        translationLanguageA: config.translationLanguageA,
-        translationLanguageB: config.translationLanguageB,
       },
       {
-        onOpen: () => {
-          dispatch(startRecordingState());
-        },
+        onOpen: () => dispatch(startRecordingState()),
         onClose: async () => {
           await audioCaptureManager.stop();
           dispatch(stopRecordingState());
         },
-        onError: () => {
-          dispatch(setStreamHealth("poor"));
-        },
-        onTokens: (
-          tokens: {
-            text: string;
-            speaker: string;
-            start_ms?: number;
-            end_ms?: number;
-            duration_ms?: number;
-            is_final: boolean;
-            translation_status?: "original" | "translation";
-            language: string;
-          }[],
-        ) => {
+        onError: () => dispatch(setStreamHealth("poor")),
+        onTokens: (tokens) => {
           const mappedTokens = tokens.map((t) => {
             const start = t.start_ms ?? 0;
             const end =
@@ -235,46 +220,19 @@ export default function Home() {
       {/* Header for mobile only */}
       <div className="lg:hidden flex w-full bg-neutral-950 border-b border-white/10 overflow-x-auto scrollbar-none shrink-0">
         <div className="flex px-4 py-3 gap-2 min-w-max w-full justify-around">
-          <button
-            onClick={() => setActiveTab("sessions")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-              activeTab === "sessions"
-                ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
-                : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
-            }`}
-          >
-            🏠 Home
-          </button>
-          <button
-            onClick={() => setActiveTab("transcription")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-              activeTab === "transcription"
-                ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
-                : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
-            }`}
-          >
-            🎙️ Live Session
-          </button>
-          <button
-            onClick={() => setActiveTab("playback")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-              activeTab === "playback"
-                ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
-                : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
-            }`}
-          >
-            🔊 Playback Session
-          </button>
-          <button
-            onClick={() => setActiveTab("chat")}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-              activeTab === "chat"
-                ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
-                : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
-            }`}
-          >
-            🤖 AI Chat
-          </button>
+          {MOBILE_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
+                activeTab === tab.id
+                  ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
+                  : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 

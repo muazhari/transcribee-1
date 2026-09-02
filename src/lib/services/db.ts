@@ -43,13 +43,9 @@ class TranscribeeDB {
 
   private getDB(): Promise<IDBDatabase> {
     if (typeof window === "undefined") {
-      return new Promise((_, reject) =>
-        reject(new Error("Cannot access IndexedDB on server side")),
-      );
+      return Promise.reject(new Error("Cannot access IndexedDB on server side"));
     }
-    if (this.dbPromise) {
-      return this.dbPromise;
-    }
+    if (this.dbPromise) return this.dbPromise;
 
     this.dbPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -60,158 +56,90 @@ class TranscribeeDB {
           db.createObjectStore("sessions", { keyPath: "id" });
         }
         if (!db.objectStoreNames.contains("transcripts")) {
-          const transcriptStore = db.createObjectStore("transcripts", {
-            keyPath: "id",
-          });
-          transcriptStore.createIndex("sessionId", "sessionId", {
-            unique: false,
-          });
-          transcriptStore.createIndex(
-            "sessionId_startTimestamp",
-            ["sessionId", "startTimestamp"],
-            { unique: false },
-          );
+          const transcriptStore = db.createObjectStore("transcripts", { keyPath: "id" });
+          transcriptStore.createIndex("sessionId", "sessionId", { unique: false });
+          transcriptStore.createIndex("sessionId_startTimestamp", ["sessionId", "startTimestamp"], { unique: false });
         }
         if (!db.objectStoreNames.contains("chatPairs")) {
-          const chatStore = db.createObjectStore("chatPairs", {
-            keyPath: "id",
-          });
+          const chatStore = db.createObjectStore("chatPairs", { keyPath: "id" });
           chatStore.createIndex("sessionId", "sessionId", { unique: false });
         }
         if (!db.objectStoreNames.contains("audioChunks")) {
-          const audioStore = db.createObjectStore("audioChunks", {
-            keyPath: "id",
-            autoIncrement: true,
-          });
+          const audioStore = db.createObjectStore("audioChunks", { keyPath: "id", autoIncrement: true });
           audioStore.createIndex("sessionId", "sessionId", { unique: false });
-          audioStore.createIndex(
-            "sessionId_startTimestamp",
-            ["sessionId", "startTimestamp"],
-            { unique: false },
-          );
+          audioStore.createIndex("sessionId_startTimestamp", ["sessionId", "startTimestamp"], { unique: false });
         }
       };
 
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-
-      request.onerror = () => {
-        reject(request.error);
-      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
     });
 
     return this.dbPromise;
   }
 
-  // --- Sessions ---
-  async saveSession(session: Session): Promise<void> {
-    const db = await this.getDB();
+  private req<T>(request: IDBRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction("sessions", "readwrite");
-      const store = transaction.objectStore("sessions");
-      const request = store.put(session);
-      request.onsuccess = () => resolve();
+      request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
+  }
+
+  private async getStore(name: string, mode: IDBTransactionMode = "readonly") {
+    const db = await this.getDB();
+    return db.transaction(name, mode).objectStore(name);
+  }
+
+  private async getByIndex<T>(storeName: string, indexName: string, query: IDBValidKey): Promise<T[]> {
+    const store = await this.getStore(storeName);
+    return this.req(store.index(indexName).getAll(query));
+  }
+
+  private deleteByIndex(store: IDBObjectStore, indexName: string, key: IDBValidKey) {
+    const req = store.index(indexName).openCursor(IDBKeyRange.only(key));
+    req.onsuccess = (e) => {
+      const cursor = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      }
+    };
+  }
+
+  // --- Sessions ---
+  async saveSession(session: Session): Promise<void> {
+    const store = await this.getStore("sessions", "readwrite");
+    await this.req(store.put(session));
   }
 
   async getSessions(): Promise<Session[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("sessions", "readonly");
-      const store = transaction.objectStore("sessions");
-      const request = store.getAll();
-      request.onsuccess = () => {
-        const sorted = (request.result as Session[]).sort(
-          (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-        );
-        resolve(sorted);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    const store = await this.getStore("sessions");
+    const list = await this.req<Session[]>(store.getAll());
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
   async getSession(id: string): Promise<Session | null> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("sessions", "readonly");
-      const store = transaction.objectStore("sessions");
-      const request = store.get(id);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
-    });
+    const store = await this.getStore("sessions");
+    return (await this.req<Session | undefined>(store.get(id))) || null;
   }
 
   async deleteSession(id: string): Promise<void> {
     const db = await this.getDB();
-    // Cascade delete transcripts, chatPairs, and audioChunks in a transaction
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction(
-        ["sessions", "transcripts", "chatPairs", "audioChunks"],
-        "readwrite",
-      );
-
-      // Delete session
-      transaction.objectStore("sessions").delete(id);
-
-      // Delete transcripts
-      const transcriptStore = transaction.objectStore("transcripts");
-      const transcriptIndex = transcriptStore.index("sessionId");
-      const transcriptCursorRequest = transcriptIndex.openCursor(
-        IDBKeyRange.only(id),
-      );
-      transcriptCursorRequest.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>)
-          .result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-
-      // Delete Chat pairs
-      const chatStore = transaction.objectStore("chatPairs");
-      const chatIndex = chatStore.index("sessionId");
-      const chatCursorRequest = chatIndex.openCursor(IDBKeyRange.only(id));
-      chatCursorRequest.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>)
-          .result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-
-      // Delete audio chunks
-      const audioStore = transaction.objectStore("audioChunks");
-      const audioIndex = audioStore.index("sessionId");
-      const audioCursorRequest = audioIndex.openCursor(IDBKeyRange.only(id));
-      audioCursorRequest.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>)
-          .result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        }
-      };
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
+      const tx = db.transaction(["sessions", "transcripts", "chatPairs", "audioChunks"], "readwrite");
+      tx.objectStore("sessions").delete(id);
+      this.deleteByIndex(tx.objectStore("transcripts"), "sessionId", id);
+      this.deleteByIndex(tx.objectStore("chatPairs"), "sessionId", id);
+      this.deleteByIndex(tx.objectStore("audioChunks"), "sessionId", id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
     });
   }
 
   // --- Transcripts ---
   async saveTranscript(transcript: Transcript): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("transcripts", "readwrite");
-      const store = transaction.objectStore("transcripts");
-      const request = store.put(transcript);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    const store = await this.getStore("transcripts", "readwrite");
+    await this.req(store.put(transcript));
   }
 
   async saveTranscripts(transcripts: Transcript[]): Promise<void> {
@@ -219,87 +147,48 @@ class TranscribeeDB {
     const sessionId = transcripts[0].sessionId;
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
-      const transaction = db.transaction("transcripts", "readwrite");
-      const store = transaction.objectStore("transcripts");
-
-      // Delete all existing transcripts for this sessionId
-      const index = store.index("sessionId");
-      const cursorRequest = index.openCursor(IDBKeyRange.only(sessionId));
-
-      cursorRequest.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>)
-          .result;
+      const tx = db.transaction("transcripts", "readwrite");
+      const store = tx.objectStore("transcripts");
+      const req = store.index("sessionId").openCursor(IDBKeyRange.only(sessionId));
+      req.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
         if (cursor) {
           cursor.delete();
           cursor.continue();
         } else {
-          // After deletion is complete, save all new transcripts
           transcripts.forEach((t) => store.put(t));
         }
       };
-
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
     });
   }
 
   async getTranscripts(sessionId: string): Promise<Transcript[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("transcripts", "readonly");
-      const store = transaction.objectStore("transcripts");
-      const index = store.index("sessionId");
-      const request = index.getAll(IDBKeyRange.only(sessionId));
-      request.onsuccess = () => {
-        const sorted = (request.result as Transcript[]).sort(
-          (a, b) => a.startTimestamp - b.startTimestamp,
-        );
-        resolve(sorted);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    const list = await this.getByIndex<Transcript>("transcripts", "sessionId", sessionId);
+    return list.sort((a, b) => a.startTimestamp - b.startTimestamp);
   }
 
   // --- Chat Pairs ---
   async saveChatPair(chatPair: ChatPair): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("chatPairs", "readwrite");
-      const store = transaction.objectStore("chatPairs");
-      const request = store.put(chatPair);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    const store = await this.getStore("chatPairs", "readwrite");
+    await this.req(store.put(chatPair));
   }
 
   async getChatPairs(sessionId: string): Promise<ChatPair[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("chatPairs", "readonly");
-      const store = transaction.objectStore("chatPairs");
-      const index = store.index("sessionId");
-      const request = index.getAll(IDBKeyRange.only(sessionId));
-      request.onsuccess = () => {
-        const sorted = (request.result as ChatPair[]).sort(
-          (a, b) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-        );
-        resolve(sorted);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    const list = await this.getByIndex<ChatPair>("chatPairs", "sessionId", sessionId);
+    return list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 
   // --- Audio Chunks ---
   async saveAudioChunk(chunk: AudioChunk): Promise<void> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("audioChunks", "readwrite");
-      const store = transaction.objectStore("audioChunks");
-      const request = store.put(chunk);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    const store = await this.getStore("audioChunks", "readwrite");
+    await this.req(store.put(chunk));
+  }
+
+  async getSessionAudioChunks(sessionId: string): Promise<AudioChunk[]> {
+    const chunks = await this.getByIndex<AudioChunk>("audioChunks", "sessionId", sessionId);
+    return chunks.sort((a, b) => a.startTimestamp - b.startTimestamp);
   }
 
   async getAudioChunksForRange(
@@ -307,51 +196,13 @@ class TranscribeeDB {
     startTimestampMs: number,
     endTimestampMs: number,
   ): Promise<AudioChunk[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("audioChunks", "readonly");
-      const store = transaction.objectStore("audioChunks");
-      const index = store.index("sessionId");
-      const request = index.getAll(IDBKeyRange.only(sessionId));
-
-      request.onsuccess = () => {
-        const allChunks = request.result as AudioChunk[];
-        // Filter chunks that overlap with our desired range
-        const overlapping = allChunks.filter((chunk) => {
-          // Assume each chunk is 256ms or similar.
-          // Let's compute actual duration of this chunk.
-          // Sample rate is 16000Hz (16 samples per ms).
-          const chunkDurationMs = chunk.data.length / 16;
-          const chunkEndTimestampMs = chunk.startTimestamp + chunkDurationMs;
-
-          // Overlap condition
-          return (
-            chunk.startTimestamp <= endTimestampMs &&
-            chunkEndTimestampMs >= startTimestampMs
-          );
-        });
-
-        // Sort by startTimestamp
-        overlapping.sort((a, b) => a.startTimestamp - b.startTimestamp);
-        resolve(overlapping);
-      };
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  async getSessionAudioChunks(sessionId: string): Promise<AudioChunk[]> {
-    const db = await this.getDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction("audioChunks", "readonly");
-      const store = transaction.objectStore("audioChunks");
-      const index = store.index("sessionId");
-      const request = index.getAll(IDBKeyRange.only(sessionId));
-      request.onsuccess = () => {
-        const chunks = request.result as AudioChunk[];
-        chunks.sort((a, b) => a.startTimestamp - b.startTimestamp);
-        resolve(chunks);
-      };
-      request.onerror = () => reject(request.error);
+    const chunks = await this.getSessionAudioChunks(sessionId);
+    return chunks.filter((chunk) => {
+      const chunkDurationMs = chunk.data.length / 16;
+      return (
+        chunk.startTimestamp <= endTimestampMs &&
+        chunk.startTimestamp + chunkDurationMs >= startTimestampMs
+      );
     });
   }
 }

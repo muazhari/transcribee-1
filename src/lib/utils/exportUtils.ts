@@ -1,27 +1,12 @@
 import { Transcript } from "../services/db";
 
+export { formatMsToTime } from "./transcriptUtils";
+
 // Helper to format ms to SRT timestamp (HH:MM:SS,mmm)
 export const formatMsToSrtTime = (ms: number): string => {
-  const totalSecs = Math.floor(ms / 1000);
-  const msecs = ms % 1000;
-  const secs = totalSecs % 60;
-  const mins = Math.floor(totalSecs / 60) % 60;
-  const hours = Math.floor(totalSecs / 3600);
-
-  const hh = hours.toString().padStart(2, "0");
-  const mm = mins.toString().padStart(2, "0");
-  const ss = secs.toString().padStart(2, "0");
-  const mmm = msecs.toString().padStart(3, "0");
-
-  return `${hh}:${mm}:${ss},${mmm}`;
-};
-
-// Helper to format seconds/ms to normal standard time (MM:SS)
-export const formatMsToTime = (ms: number): string => {
-  const totalSecs = Math.floor(ms / 1000);
-  const mins = Math.floor(totalSecs / 60);
-  const secs = totalSecs % 60;
-  return `${mins}:${secs.toString().padStart(2, "0")}`;
+  const s = Math.floor(ms / 1000);
+  const pad = (n: number, w = 2) => n.toString().padStart(w, "0");
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)},${pad(ms % 1000, 3)}`;
 };
 
 // Generate SRT content

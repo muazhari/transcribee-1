@@ -1,5 +1,9 @@
 import { db } from "./db";
 
+const getAudioContextClass = () =>
+  window.AudioContext ||
+  (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+
 export class AudioCaptureManager {
   private audioContext: AudioContext | null = null;
   private micStream: MediaStream | null = null;
@@ -11,7 +15,7 @@ export class AudioCaptureManager {
   private recordedSamples: number = 0;
   private offsetTimestamp: number = 0;
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
-  private pendingSaves: Promise<void>[] = [];
+  private pendingSaves = new Set<Promise<void>>();
   private resamplerPosition: number = 0;
   private resamplerLastSample: number = 0;
 
@@ -36,8 +40,7 @@ export class AudioCaptureManager {
     // Create the AudioContext using native hardware sample rate.
     // Avoid forcing requested sampleRate: 16000 because Chromium's MediaStreamAudioSourceNode
     // internal resampler ring buffer experiences clock drift over time, causing static noise after a few minutes.
-    const AudioContextClass =
-      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    const AudioContextClass = getAudioContextClass();
     this.audioContext = new AudioContextClass();
     const contextSampleRate = this.audioContext.sampleRate;
 
@@ -164,13 +167,13 @@ export class AudioCaptureManager {
             sessionId: this.sessionId,
             startTimestamp: chunkStartMs,
             data: pcm16,
-          }).catch((err) => {
+          }).catch((err: unknown) => {
             console.error("Failed to save audio chunk to DB:", err);
           });
 
-          this.pendingSaves.push(savePromise);
+          this.pendingSaves.add(savePromise);
           savePromise.finally(() => {
-            this.pendingSaves = this.pendingSaves.filter((p) => p !== savePromise);
+            this.pendingSaves.delete(savePromise);
           });
         }
       };
@@ -201,11 +204,11 @@ export class AudioCaptureManager {
     this.speakerStream = null;
 
     // 4. Wait for all pending database saves to complete
-    if (this.pendingSaves.length > 0) {
-      await Promise.all(this.pendingSaves).catch((err) => {
+    if (this.pendingSaves.size > 0) {
+      await Promise.all(this.pendingSaves).catch((err: unknown) => {
         console.error("Failed to await pending audio saves:", err);
       });
-      this.pendingSaves = [];
+      this.pendingSaves.clear();
     }
 
     // 5. Close audio context
@@ -301,12 +304,6 @@ export class AudioCaptureManager {
       offset += chunk.data.length;
     }
 
-    // Convert back to Float32 range [-1.0, 1.0]
-    const combinedFloat32 = new Float32Array(totalLength);
-    for (let i = 0; i < totalLength; i++) {
-      combinedFloat32[i] = combinedInt16[i] / 32768.0;
-    }
-
     // Determine sample rate and offsets
     const SAMPLE_RATE = 16000;
     const firstChunkStartMs = chunks[0].startTimestamp;
@@ -333,12 +330,15 @@ export class AudioCaptureManager {
       return;
     }
 
-    const snippet = combinedFloat32.subarray(cropStartSample, cropEndSample);
+    const croppedInt16 = combinedInt16.subarray(cropStartSample, cropEndSample);
+    const snippet = new Float32Array(croppedInt16.length);
+    for (let i = 0; i < croppedInt16.length; i++) {
+      snippet[i] = croppedInt16[i] / 32768.0;
+    }
 
     // Play snippet using a short-lived AudioContext
-    const playCtx = new (
-      window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    )();
+    const AudioContextClass = getAudioContextClass();
+    const playCtx = new AudioContextClass();
     try {
       const buffer = playCtx.createBuffer(1, snippet.length, SAMPLE_RATE);
       buffer.copyToChannel(snippet, 0);

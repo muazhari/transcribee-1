@@ -47,7 +47,6 @@ export default function TranscriptBlock({
   const handlePlaySegment = onPlaySegment || onClickWord;
 
   const wordRanges = getWordTimestampRanges(transcript);
-  const displayTooltips = !handleSeek && !!handlePlaySegment;
 
   const startStr = formatMsToTime(transcript.startTimestamp);
   const endStr = formatMsToTime(transcript.endTimestamp);

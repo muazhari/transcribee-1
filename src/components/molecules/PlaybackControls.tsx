@@ -1,5 +1,6 @@
 import React from "react";
 import Button from "../atoms/Button";
+import { formatMsToTime } from "@/lib/utils/transcriptUtils";
 
 interface PlaybackControlsProps {
   isPlaying: boolean;
@@ -36,12 +37,8 @@ export default function PlaybackControls({
   onVolumeChange,
   onToggleMute,
 }: PlaybackControlsProps) {
-  const formatTime = (secs: number) => {
-    if (isNaN(secs)) return "0:00";
-    const minutes = Math.floor(secs / 60);
-    const seconds = Math.floor(secs % 60);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  };
+  const formatTime = (secs: number) =>
+    formatMsToTime(isNaN(secs) ? 0 : Math.round(secs * 1000));
 
   if (loadingAudio) {
     return (

@@ -11,39 +11,45 @@ export interface SonioxConfig {
   translationLanguageB?: string;
 }
 
+export interface SonioxToken {
+  text: string;
+  speaker: string;
+  start_ms?: number;
+  end_ms?: number;
+  duration_ms?: number;
+  is_final: boolean;
+  translation_status?: "original" | "translation";
+  language: string;
+}
+
+export interface SonioxCallbacks {
+  onOpen?: () => void;
+  onClose?: () => void;
+  onTokens: (tokens: SonioxToken[]) => void;
+  onError?: (error: Event) => void;
+}
+
 export class SonioxStreamClient {
   private ws: WebSocket | null = null;
-  private onTokensCallback: ((tokens: any[]) => void) | null = null;
-  private onErrorCallback: ((error: any) => void) | null = null;
-  private onOpenCallback: (() => void) | null = null;
-  private onCloseCallback: (() => void) | null = null;
+  private callbacks: SonioxCallbacks | null = null;
 
-  connect(
-    config: SonioxConfig,
-    callbacks: {
-      onOpen?: () => void;
-      onClose?: () => void;
-      onTokens: (tokens: any[]) => void;
-      onError?: (error: any) => void;
-    },
-  ): void {
+  connect(config: SonioxConfig, callbacks: SonioxCallbacks): void {
     if (typeof window === "undefined") return;
 
-    this.onTokensCallback = callbacks.onTokens;
-    this.onErrorCallback = callbacks.onError || null;
-    this.onOpenCallback = callbacks.onOpen || null;
-    this.onCloseCallback = callbacks.onClose || null;
-
-    // Soniox WebSocket STT endpoint
-    const url = "wss://stt-rt.soniox.com/transcribe-websocket";
-    this.ws = new WebSocket(url);
+    this.callbacks = callbacks;
+    this.ws = new WebSocket("wss://stt-rt.soniox.com/transcribe-websocket");
     this.ws.binaryType = "arraybuffer";
 
     this.ws.onopen = () => {
       console.log("Soniox WebSocket onOpen");
 
-      // Send initial JSON configuration message
-      const initialConfig: any = {
+      const translation = config.enableTranslation
+        ? config.translationMode === "one-way"
+          ? { type: "one_way", target_language: config.translationTargetLanguage || "id" }
+          : { type: "two_way", language_a: config.translationLanguageA || "en", language_b: config.translationLanguageB || "id" }
+        : undefined;
+
+      const initialConfig: Record<string, unknown> = {
         api_key: config.apiKey,
         model: config.model,
         audio_format: "pcm_s16le",
@@ -53,30 +59,11 @@ export class SonioxStreamClient {
         enable_endpoint_detection: config.enableEndpointDetection,
         enable_language_identification: config.enableLanguageIdentification,
         language_hints: config.languageHints,
+        ...(translation && { translation }),
       };
 
-      // Add translation properties if enabled
-      if (config.enableTranslation) {
-        if (config.translationMode === "one-way") {
-          initialConfig.translation = {
-            type: "one_way",
-            target_language: config.translationTargetLanguage || "id",
-          };
-        } else if (config.translationMode === "two-way") {
-          initialConfig.translation = {
-            type: "two_way",
-            language_a: config.translationLanguageA || "en",
-            language_b: config.translationLanguageB || "id",
-          };
-        }
-      } else {
-        delete initialConfig.translation;
-      }
-
       this.ws?.send(JSON.stringify(initialConfig));
-      if (this.onOpenCallback) {
-        this.onOpenCallback();
-      }
+      this.callbacks?.onOpen?.();
     };
 
     this.ws.onmessage = (event) => {
@@ -84,8 +71,8 @@ export class SonioxStreamClient {
       if (typeof event.data === "string") {
         try {
           const response = JSON.parse(event.data);
-          if (response.tokens && this.onTokensCallback) {
-            this.onTokensCallback(response.tokens);
+          if (response.tokens && this.callbacks?.onTokens) {
+            this.callbacks.onTokens(response.tokens);
           }
         } catch (e) {
           console.error("Failed to parse Soniox message:", e);
@@ -95,21 +82,17 @@ export class SonioxStreamClient {
 
     this.ws.onerror = (event) => {
       console.error("Soniox WebSocket onError:", event);
-      if (this.onErrorCallback) {
-        this.onErrorCallback(event);
-      }
+      this.callbacks?.onError?.(event);
     };
 
     this.ws.onclose = (event: CloseEvent) => {
       console.warn("Soniox WebSocket onClose", event);
-      if (this.onCloseCallback) {
-        this.onCloseCallback();
-      }
+      this.callbacks?.onClose?.();
     };
   }
 
   sendAudio(data: Int16Array): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(data.buffer);
     }
   }
@@ -119,10 +102,7 @@ export class SonioxStreamClient {
       this.ws.close();
       this.ws = null;
     }
-    this.onTokensCallback = null;
-    this.onErrorCallback = null;
-    this.onOpenCallback = null;
-    this.onCloseCallback = null;
+    this.callbacks = null;
   }
 }
 

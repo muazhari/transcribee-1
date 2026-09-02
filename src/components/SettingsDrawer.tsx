@@ -60,21 +60,7 @@ export default function SettingsDrawer({
     reset,
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    values: {
-      sonioxApiKey: config.sonioxApiKey,
-      googleApiKey: config.googleApiKey,
-      aiModel: config.aiModel,
-      transcriptionModel: config.transcriptionModel,
-      languageHints: config.languageHints,
-      enableEndpointDetection: config.enableEndpointDetection,
-      enableLanguageIdentification: config.enableLanguageIdentification,
-      enableTranslation: config.enableTranslation,
-      translationMode: config.translationMode,
-      translationTargetLanguage: config.translationTargetLanguage,
-      translationLanguageA: config.translationLanguageA,
-      translationLanguageB: config.translationLanguageB,
-      audioRouting: config.audioRouting,
-    },
+    values: config,
   });
 
   const onCloseHandler = () => {
@@ -94,28 +80,12 @@ export default function SettingsDrawer({
   const translationMode = watch("translationMode");
 
   const onSubmit = (values: SettingsFormValues) => {
-    let resolvedAudioRouting = values.audioRouting;
-    if (!hasDisplayMedia && resolvedAudioRouting !== "mic-only") {
-      resolvedAudioRouting = "mic-only";
-    }
+    const audioRouting =
+      !hasDisplayMedia && values.audioRouting !== "mic-only"
+        ? "mic-only"
+        : values.audioRouting;
 
-    dispatch(
-      updateConfig({
-        sonioxApiKey: values.sonioxApiKey,
-        googleApiKey: values.googleApiKey,
-        aiModel: values.aiModel,
-        transcriptionModel: values.transcriptionModel,
-        languageHints: values.languageHints,
-        enableEndpointDetection: values.enableEndpointDetection,
-        enableLanguageIdentification: values.enableLanguageIdentification,
-        enableTranslation: values.enableTranslation,
-        translationMode: values.translationMode,
-        translationTargetLanguage: values.translationTargetLanguage,
-        translationLanguageA: values.translationLanguageA,
-        translationLanguageB: values.translationLanguageB,
-        audioRouting: resolvedAudioRouting,
-      }),
-    );
+    dispatch(updateConfig({ ...values, audioRouting }));
     onCloseHandler();
   };
 
@@ -299,11 +269,7 @@ export default function SettingsDrawer({
                     </div>
                   )}
                 />
-              </div>
-            )}
 
-            {enableTranslation && (
-              <div className="flex flex-col gap-4 mt-2">
                 {translationMode === "one-way" ? (
                   <Select
                     label="Target language"
