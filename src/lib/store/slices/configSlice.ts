@@ -19,7 +19,7 @@ export interface ConfigState {
 const initialState: ConfigState = {
   sonioxApiKey: "",
   googleApiKey: "",
-  aiModel: "gemini-3.6-flash",
+  aiModel: "gemini-3.8-flash",
   transcriptionModel: "stt-rt-v5",
   languageHints: ["en", "id"],
   enableEndpointDetection: true,
