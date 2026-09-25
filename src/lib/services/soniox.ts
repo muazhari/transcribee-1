@@ -93,7 +93,7 @@ export class SonioxStreamClient {
 
   sendAudio(data: Int16Array): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(data.buffer);
+      this.ws.send(data as unknown as BufferSource);
     }
   }
 
