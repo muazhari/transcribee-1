@@ -1,32 +1,27 @@
-# Technical Architecture & Client-Side Agents Specification (`agents.md`)
+# Technical Architecture & Client-Side Agents Specification (`AGENTS.md`)
 
-This document outlines the architecture of the **Local-First Real-Time Transcription & AI Chat System**. Operating entirely within the browser sandbox, the system orchestrates audio streaming, real-time AI processing, context management, and client-side relational storage without relying on an intermediate backend application server.
+Local-first, browser-sandbox real-time transcription, diarization, translation, playback, and AI chat. Zero backend server required.
 
 ---
 
 ## 1. System Architecture Overview
 
-The system is designed around a decoupled, reactive event-driven architecture powered by **Redux Toolkit (RTK)** as the global orchestrator. Interactions with external AI services (Soniox, Gemini) occur directly from the client browser using custom streaming engines, while storage is managed locally using **PGlite (Postgres in WASM) / IndexedDB** abstracted through **Prisma Client**.
+Decoupled, reactive event-driven architecture orchestrated via **Redux Toolkit (RTK)**. Streaming AI services connect directly via client WebSockets / SDKs; persistence is handled in-browser via **IndexedDB** / **OPFS**.
 
-```
-                           +---------------------------------------+
-                           |       Web Audio API Processing        |
-                           |   (Mic Input + Speaker Loopback)      |
-                           +-------------------+-------------------+
-                                               | Raw Audio Buffer
-                                               v
-+-----------------------+  Audio Stream +------+------+   Real-Time Tokens  +------------------------+
-|  Soniox Live STT Agent | ------------> |  RTK Global | <------------------ |   Gemini Chat Agent     |
-|   (WebSocket Engine)  | <------------ | State Engine | ----------------->  |   (LangChain JS Client)|
-+-----------------------+  Config / Keys +------+------+   Context Stream   +------------------------+
-                                               |
-                                               | Structured Payload Data
-                                               v
-                           +-------------------+-------------------+
-                           |    Local-First Persistence Agent      |
-                           |   (Prisma WASM + PGlite / IndexedDB)  |
-                           +---------------------------------------+
+```mermaid
+flowchart TD
+    Audio["Web Audio API Processing<br/>(Mic + Speaker Loopback)"]
+    RTK["RTK Global State Engine"]
+    Soniox["Soniox Live STT Agent<br/>(WebSocket Engine)"]
+    Gemini["Gemini Chat Agent<br/>(LangChain JS Client)"]
+    Persistence["Local-First Persistence Agent<br/>(IndexedDB / OPFS)"]
 
+    Audio -->|"Raw Audio Buffer (PCM)"| RTK
+    RTK -->|"Audio Stream"| Soniox
+    Soniox -->|"Real-Time Tokens & Diarization"| RTK
+    RTK -->|"Context Stream"| Gemini
+    Gemini -->|"Streamed Tokens"| RTK
+    RTK -->|"Structured Payload & Audio Blobs"| Persistence
 ```
 
 ---
@@ -34,14 +29,11 @@ The system is designed around a decoupled, reactive event-driven architecture po
 ## 2. Agent Breakdowns & Core Responsibilities
 
 ### 2.1 Configuration & Validation Agent (Settings Module)
-
-Responsible for validating application configurations, managing API credentials securely in reactive memory, and ensuring schema safety before initializing streaming connections.
-
 - **Tech Stack:** `react-hook-form`, `zod`, `@reduxjs/toolkit`
-- **Key Responsibilities:**
-- Validate user credentials (Google AI API Key, Soniox API Key) via Zod schemas.
-- Enforce fallbacks (e.g., Default AI Model: `Gemini 3.5 Flash`, Default STT Model: `stt-rt-v5`).
-- Dynamically propagate updates to audio routing and language configurations down to dependent streams.
+- **Responsibilities:**
+  - Securely validate API credentials in reactive memory.
+  - Enforce defaults (`gemini-3.8-flash`, `stt-rt-v5`).
+  - Propagate audio routing and language configuration changes to active streams.
 
 ```typescript
 // Zod Schema Verification Layer
@@ -67,55 +59,46 @@ export const SettingsSchema = zod.object({
 ---
 
 ### 2.2 Audio Capture & Routing Agent
-
-Intercepts, captures, and processes physical hardware input streams and software output streams entirely using native browser primitives.
-
 - **Tech Stack:** Web Audio API (`AudioContext`, `MediaStreamAudioSourceNode`, `AudioWorklet`)
-- **Key Responsibilities:**
-- Capture microphone input via `navigator.mediaDevices.getUserMedia`.
-- Capture system/speaker output audio via screen-share audio loopbacks (`navigator.mediaDevices.getDisplayMedia`).
-- **Channel Management:** If "mix" routing is selected, mix both mic and speaker tracks down to a uniform mono/stereo linear PCM stream (16kHz or 44.1kHz) required by the STT API. If "mic-only" or "speaker-only" routing is selected, just stream the selected track.
+- **Responsibilities:**
+  - Capture microphone (`navigator.mediaDevices.getUserMedia`).
+  - Capture system/speaker output loopback (`navigator.mediaDevices.getDisplayMedia`).
+  - **Routing Modes:**
+    - `mix`: Downmix mic and speaker tracks into a uniform mono/stereo linear PCM stream (16kHz or 44.1kHz).
+    - `mic-only` / `speaker-only`: Forward the selected stream directly without mixing.
 
 ---
 
 ### 2.3 Soniox Live Transcription Agent
-
-Maintains a resilient, persistent duplex connection to the Soniox service, transmitting raw binary audio data frames and managing high-frequency, incremental token events.
-
-- **Tech Stack:** Native Browser `WebSocket` client, Custom RTK Middleware Async Thunks
-- **Key Responsibilities:**
-- Establish high-frequency binary stream pipelines to `wss://[api.soniox.com/v1/stream](https://api.soniox.com/v1/stream)`.
-- Inject dynamic configuration headers on connection initialization (e.g., translation profiles, channel masks, language identifiers).
-- Consume token streams natively, extracting Word-Level Timestamps (`start_ms`, `duration_ms`), Speaker ID Tags (Diarization), and Translation strings.
-- Append incremental outputs cleanly to the RTK Global Slice to prevent excessive DOM thrashing.
-- Display streamed `isFinal == false` transcription, then refine transcription after `isFinal == true`. This is to make the transcription more readable. If it is not refined, the transcription will be spaced out and hard to read. Use different styles when displaying non-refined and refined transcription.
+- **Tech Stack:** Native Browser `WebSocket` client, RTK Async Thunks
+- **Endpoint:** `wss://api.soniox.com/v1/stream`
+- **Responsibilities:**
+  - Establish high-frequency binary stream pipeline with dynamic header configuration (translation profiles, channel masks, language IDs).
+  - Stream word-level timestamps (`start_ms`, `duration_ms`), speaker diarization tags, and translations.
+  - Append incremental tokens cleanly to RTK state without triggering excessive DOM re-renders.
+  - **Rendering Strategy:** Display unfinalized (`isFinal == false`) stream in real-time, then refine layout once finalized (`isFinal == true`) using distinct styles to avoid jagged spacing.
 
 ---
 
 ### 2.4 Context & Token Manager Agent
-
-Monitors the client-side accumulated transcription array, performing real-time safety metrics and token allocation mapping before raw structural context is forwarded to the LLM context frame.
-
 - **Tech Stack:** `langchain/llms/base`, `@langchain/core/tokens`
-- **Key Responsibilities:**
-- Continuously monitor text block mutations within the active recording session.
-- Calculate precise token sizes using client-side approximations matching the Gemini tokenizer architecture.
-- **Guardrail Execution:** Compare active token volume against the model's target threshold constraints. When volume passes **85%** capacity, dispatch a UI alert warning state via the global notification layout. If volume passes **100%**, execute smart FIFO (First-In, First-Out) truncation prioritizing speaker integrity boundaries.
+- **Responsibilities:**
+  - Track transcript mutations and estimate token count using Gemini-compatible tokenizer logic.
+  - **Guardrails:**
+    - **≥ 85% capacity:** Dispatch global warning banner in UI.
+    - **≥ 100% capacity:** Execute smart FIFO (First-In, First-Out) truncation preserving complete speaker turn boundaries.
 
 ---
 
 ### 2.5 Gemini Chat Agent
-
-Manages standalone semantic interrogation interactions over the compiled session context logs. Runs entirely inside the browser using LangChain expressions.
-
 - **Tech Stack:** `@langchain/google-genai`, `langchain/prompts`
-- **Key Responsibilities:**
-- Initialize localized instances of `ChatGoogleGenerativeAI` dynamically utilizing the credentials provided by the Configuration Agent.
-- Compile the systemic engineering prompt template combining the parsed history, the truncated context block, and the user's explicit question.
-- Expose fully-streamed token outputs from Gemini directly to UI response elements using standard async iterators.
+- **Responsibilities:**
+  - Instantiate localized `ChatGoogleGenerativeAI` dynamically with credentials from config.
+  - Compile chat prompt with transcript context, history, and user question.
+  - Stream tokens directly to UI elements via async iterators.
 
 ```typescript
-// Conceptual Token Execution Path
+// Prompt Execution Pipeline
 const promptTemplate = ChatPromptTemplate.fromMessages([
   [
     "system",
@@ -129,29 +112,38 @@ const promptTemplate = ChatPromptTemplate.fromMessages([
 ---
 
 ### 2.6 Local-First Persistence Agent
-
-Abstracts stateful, offline relational operations inside the client environment, storing structural telemetry metrics alongside extensive raw data segments.
-
-- **Tech Stack:** `Prisma Client (WASM / Driver Adapter)`, `@electric-sql/pglite` or IndexedDB Engine, Web Origin Private File System (OPFS)
-- **Key Responsibilities:**
-- **Data Models:** Synchronize structures representing sessions, transcription tokens, translations, speaker shifts, and question-answer configurations.
-- **High-Volume Blob Caching:** Stream continuous binary audio input directly into indexed chunk allocations inside browser storage/OPFS to eliminate client RAM exhaustion.
-- **Transactional Bindings:** Guarantee ACID compliance across operations updating text fragments alongside microsecond timestamp mappings.
+- **Tech Stack:** `Prisma Client (WASM / Driver Adapter)`, `@electric-sql/pglite` / IndexedDB, Web Origin Private File System (OPFS)
+- **Responsibilities:**
+  - Persist sessions, transcripts, translations, speaker tags, and Q&A pairs.
+  - Stream raw binary audio buffers directly into OPFS / IndexedDB chunk allocations to prevent memory leaks.
+  - Maintain ACID transaction guarantees for timestamped records.
 
 ---
 
-## 3. Advanced Feature Implementation Paths
+## 3. Advanced Features & Data Schema
 
-### 3.1 Token-Level Audio Playback Architecture
+### 3.1 Token-Level Audio Playback (Audio Scrubbing)
 
-To achieve granular audio scrubbing (clicking a transcribed token plays the precise split-second of audio), the system correlates textual elements with audio chunk timelines:
+Correlates text tokens with audio intervals to play the exact split-second of audio on click:
 
-1. **Ingestion:** The **Audio Capture Agent** marks data blocks with high-precision absolute timestamps relative to session generation zero (`t_0`).
-2. **Mapping:** The **Soniox Live Transcription Agent** appends relative offset values (`start_ms` and `duration_ms`) directly to every text token object returned by the WebSocket pipeline.
-3. **Cross-Referencing:** The UI registers text interaction elements with click handlers containing targets targeting the token's precise mathematical offsets.
-4. **Playback Extraction:** The **Persistence Agent** seeks directly inside the browser audio cache, extracts the target segment array, shifts playback targets dynamically, and routes the slice directly to the output hardware nodes.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as UI Component
+    participant Audio as Audio Capture Agent
+    participant Soniox as Soniox Live STT
+    participant RTK as RTK Store
+    participant DB as Persistence (IndexedDB/OPFS)
 
-### 3.2 Relational Local Storage Schema (Prisma Engine Blueprint)
+    Audio->>DB: Record & store audio chunks with absolute timestamps (t0)
+    Soniox->>RTK: Emit text tokens with relative offsets (start_ms, duration_ms)
+    UI->>DB: User clicks token -> query target time offset
+    DB->>UI: Slice audio buffer chunk & route to output speaker
+```
+
+---
+
+### 3.2 Relational Local Storage Schema (Prisma Blueprint)
 
 ```prisma
 datasource db {
@@ -160,69 +152,73 @@ datasource db {
 }
 
 model Session {
-  id             String          @id @default(uuid())
-  createdAt      DateTime        @default(now())
+  id             String       @id @default(uuid())
+  createdAt      DateTime     @default(now())
   title          String?
-  audioBlobPath  String          // Reference path pointing to browser local storage index
+  audioBlobPath  String       // Path/key in browser storage/OPFS
   transcripts    Transcript[]
-  chatPairs       ChatPair[]
+  chatPairs      ChatPair[]
 }
 
 model Transcript {
-  id             String          @id @default(uuid())
-  sessionId      String
-  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  speakerId      String          // Diarization identity mapping ("Speaker 1", "Speaker 2")
-  text           String          // Original localized text content
-  isFinal        Boolean         // Whether the text is final or not
-  translationStatus String       // Status of the translation
-  language       String          // Language of the transcription
-  translation    String?         // Outgoing target language translation block if enabled
-  startTimestamp Int             // Start point offset in milliseconds from session initialization
-  endTimestamp   Int             // End point offset in milliseconds from session initialization
-  offsetTimestamp Int             // Offset timestamp of the transcription segment
-  duration       Int             // Duration of the transcription segment in milliseconds
-
+  id                String   @id @default(uuid())
+  sessionId         String
+  session           Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  speakerId         String   // Diarization identity ("Speaker 1", "Speaker 2")
+  text              String   // Original transcribed text
+  isFinal           Boolean  // Finalized segment indicator
+  translationStatus String   // Status of translation pipeline
+  language          String   // Detected / transcribed language
+  translation       String?  // Target language translation
+  startTimestamp    Int      // Milliseconds from session start
+  endTimestamp      Int      // Milliseconds from session start
+  offsetTimestamp   Int      // Offset timestamp of segment
+  duration          Int      // Duration in milliseconds
 }
 
 model ChatPair {
-  id             String          @id @default(uuid())
-  sessionId      String
-  session        Session         @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  question       String
-  answer         String
-  timestamp      DateTime        @default(now())
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question  String
+  answer    String
+  timestamp DateTime @default(now())
 }
-
 ```
 
 ---
 
-## 4. Global State Layout (Redux Toolkit State Slices)
+## 4. Global State Layout (Redux Toolkit Slices)
 
-The runtime environment balances performance constraints by isolating state variables based on frequency configurations:
-
-```
-State Container (RTK Root)
- ├── config          <- Static/Low-frequency validation metrics, API keys, operational profiles.
- ├── mediaControl    <- Device targets, stream health metrics, hardware mapping toggles.
- ├── transcription   <- High-frequency text tokens, relative token maps, active diarization streams.
- ├── chatContext     <- Token computation boundaries, prompt histories, truncation warning flags.
- └── persistence     <- Synced processing states, operational database access allocations.
-
+```mermaid
+classDiagram
+    class RootState {
+        +config: API keys, model selections, routing mode, language hints
+        +mediaControl: Stream health, active devices, capture toggles
+        +transcription: Real-time tokens, finalized segments, diarization maps
+        +chatContext: Token counts, chat history, truncation warnings
+        +persistence: Database connection status, sync states
+    }
 ```
 
 ---
 
-## 5. UI/UX Responsive Layout Strategies
+## 5. UI/UX Layout Strategies
 
-The application implements a tailored design framework targeting high-speed performance on mobile viewpoints while accommodating data-dense structural layouts on high-resolution displays:
+- **Mobile-First Responsive Layout:** Secondary controls and configuration reside in slide-out drawers (`HeroUI Drawer`), reserving viewport space for single-column live transcription.
+- **Scroll Pinning & Mutation Safety:** Auto-scroll keeps latest text in view by anchoring to viewport bottom. Manual upward scrolling automatically pauses auto-scroll to allow reading history and audio scrubbing without layout jumps.
+- **Atomic Design:** Strict reusable atomic component hierarchy.
 
-- **Mobile-First Construction:** Navigation interfaces hide parameter panels under persistent slide-out utility sheets (`HeroUI Drawer`), prioritizing single-column layout focus spaces containing live text generation nodes.
-- **Accessibility Under Live Mutation:** Content output arrays anchor viewing bounds dynamically to screen base plates. If a user manually scrolls upward to view historical tokens or interact with token playback components, automated tracking flags unlock seamlessly to prevent jarring viewport disruptions.
-- **Atomic Design Principles:** The application implements atomic design principles to ensure high-quality, reusable UI components, and maintainable code.
+---
 
-## 6. End-to-end Testing
+## 6. End-to-End Testing
 
-- Test the application using Playwright. Test all branches, features, and coverages.
-- When executing end-to-end tests, it is crucial to mimic real-world conditions as closely as possible. This includes simulating user interactions with the audio input and verifying the system's response to various conditions. The tests should validate the complete user journey: initiating a recording session, reviewing the final transcript, reviewing translations, reviewing playback, and chatting with the transcript. Furthermore, the tests should cover edge cases and error states, such as network interruptions or invalid input, to ensure the application handles them gracefully.
+- **Engine:** Playwright.
+- **Coverage:** Full user journey mimicking real-world conditions:
+  - Hardware setup & recording initiation (mic, loopback, mix).
+  - Real-time streaming token reception & text finalization styling.
+  - Multi-language translation streams.
+  - Token click-to-playback scrubbing accuracy.
+  - FIFO context threshold alerts (85%) & truncation (100%).
+  - In-browser AI chat streaming with session transcript context.
+  - IndexedDB session persistence & reload integrity.
