@@ -2,7 +2,8 @@ import { db } from "./db";
 
 const getAudioContextClass = () =>
   window.AudioContext ||
-  (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  (window as unknown as { webkitAudioContext: typeof AudioContext })
+    .webkitAudioContext;
 
 export class AudioCaptureManager {
   private audioContext: AudioContext | null = null;
@@ -163,13 +164,15 @@ export class AudioCaptureManager {
             (this.recordedSamples / 16000) * 1000 + this.offsetTimestamp;
           this.recordedSamples += pcm16.length;
 
-          const savePromise = db.saveAudioChunk({
-            sessionId: this.sessionId,
-            startTimestamp: chunkStartMs,
-            data: pcm16,
-          }).catch((err: unknown) => {
-            console.error("Failed to save audio chunk to DB:", err);
-          });
+          const savePromise = db
+            .saveAudioChunk({
+              sessionId: this.sessionId,
+              startTimestamp: chunkStartMs,
+              data: pcm16,
+            })
+            .catch((err: unknown) => {
+              console.error("Failed to save audio chunk to DB:", err);
+            });
 
           this.pendingSaves.add(savePromise);
           savePromise.finally(() => {

@@ -117,17 +117,13 @@ export default function ChatMessage({
               : "opacity-60"
           }`}
         >
-          {isAssistant
-            ? isStreaming
-              ? "AI is writing..."
-              : "AI Assistant"
-            : "You"}
+          {isAssistant ? (isStreaming ? "AI is writing..." : "AI") : "You"}
         </span>
         {content && !isStreaming && (
           <Button
             size="sm"
             variant="ghost"
-            className="h-6 min-w-0 px-2 text-xs opacity-70 hover:opacity-100 cursor-pointer"
+            className="h-6 min-w-0 text-xs opacity-70 hover:opacity-100 cursor-pointer"
             onPress={handleCopy}
           >
             {copied ? "✔️" : "📋"}

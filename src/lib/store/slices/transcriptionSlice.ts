@@ -21,12 +21,6 @@ const initialState: TranscriptionState = {
 
 const cleanText = (text: string): string => text.replace(/<end>/g, "");
 
-const splitSentences = (text: string): string[] =>
-  text
-    .split(/(?<=[.?!])\s+|(?<=[。？！])\s*/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
 const buildSegments = (
   finalTokens: Transcript[],
   nonFinalTokens: Transcript[],
@@ -34,133 +28,109 @@ const buildSegments = (
   const allTokens = [...finalTokens, ...nonFinalTokens];
   if (allTokens.length === 0) return [];
 
-  const originalTokens = allTokens.filter(
-    (t) => t.translationStatus !== "translation",
-  );
-  const translationTokens = allTokens.filter(
-    (t) => t.translationStatus === "translation",
-  );
-
   const segments: Transcript[] = [];
-  let current: Transcript | null = null;
+  const activeSegBySpeaker: Record<string, Transcript> = {};
+  const lastFinalizedSegBySpeaker: Record<string, Transcript> = {};
+  const pendingTransBySpeaker: Record<string, string> = {};
 
-  for (const token of originalTokens) {
+  for (const token of allTokens) {
+    const isTranslation = token.translationStatus === "translation";
+    const speakerId = token.speakerId || "1";
     const isEnd = token.text.includes("<end>");
     const text = cleanText(token.text);
 
-    if (!current) {
-      if (text.trim().length > 0 || !isEnd) {
-        current = {
-          ...token,
-          id: `${token.sessionId}-${token.offsetTimestamp || 0}-${token.speakerId}-${token.startTimestamp}`,
-          text: text.replace(/^\s+/, ""),
-          duration: Math.max(0, token.endTimestamp - token.startTimestamp),
-          isFinal: token.isFinal,
-        };
+    if (isTranslation) {
+      if (!text) continue;
+      const targetSeg =
+        activeSegBySpeaker[speakerId] || lastFinalizedSegBySpeaker[speakerId];
+
+      if (targetSeg) {
+        targetSeg.translation = (targetSeg.translation || "") + text;
+      } else {
+        pendingTransBySpeaker[speakerId] =
+          (pendingTransBySpeaker[speakerId] || "") + text;
       }
     } else {
-      const isBoundary =
-        token.speakerId !== current.speakerId ||
-        token.language !== current.language;
+      // Original speech token
+      let current: Transcript | null | undefined = activeSegBySpeaker[speakerId];
 
-      if (isBoundary) {
-        if (current.text.trim().length > 0) {
+      if (!current) {
+        if (text.trim().length > 0 || !isEnd) {
+          const pending = pendingTransBySpeaker[speakerId];
+          delete pendingTransBySpeaker[speakerId];
+
+          current = {
+            ...token,
+            id: `${token.sessionId}-${token.offsetTimestamp || 0}-${speakerId}-${token.startTimestamp}`,
+            text: text.replace(/^\s+/, ""),
+            duration: Math.max(0, token.endTimestamp - token.startTimestamp),
+            isFinal: token.isFinal,
+            translation: pending || undefined,
+          };
+          activeSegBySpeaker[speakerId] = current;
           segments.push(current);
         }
-        current =
-          text.trim().length > 0 || !isEnd
-            ? {
-                ...token,
-                id: `${token.sessionId}-${token.offsetTimestamp || 0}-${token.speakerId}-${token.startTimestamp}`,
-                text: text.replace(/^\s+/, ""),
-                duration: Math.max(0, token.endTimestamp - token.startTimestamp),
-                isFinal: token.isFinal,
-              }
-            : null;
       } else {
-        current.text += text;
-        current.endTimestamp = Math.max(
-          current.endTimestamp,
-          token.endTimestamp,
-        );
-        current.duration = Math.max(
-          0,
-          current.endTimestamp - current.startTimestamp,
-        );
-        current.isFinal = token.isFinal;
-      }
-    }
+        const isBoundary =
+          token.speakerId !== current.speakerId ||
+          token.language !== current.language;
 
-    if (isEnd && current) {
-      if (current.text.trim().length > 0) {
-        current.isFinal = true;
-        segments.push(current);
-      }
-      current = null;
-    }
-  }
+        if (isBoundary) {
+          current.isFinal = true;
+          lastFinalizedSegBySpeaker[speakerId] = current;
 
-  if (current && current.text.trim().length > 0) {
-    segments.push(current);
-  }
+          const pending = pendingTransBySpeaker[speakerId];
+          delete pendingTransBySpeaker[speakerId];
 
-  // Attach translations by speaker
-  if (translationTokens.length > 0) {
-    const speakerTrans: Record<string, string> = {};
-    for (const t of translationTokens) {
-      const text = cleanText(t.text);
-      if (!text) continue;
-      speakerTrans[t.speakerId] = (speakerTrans[t.speakerId] || "") + text;
-    }
+          current =
+            text.trim().length > 0 || !isEnd
+              ? {
+                  ...token,
+                  id: `${token.sessionId}-${token.offsetTimestamp || 0}-${speakerId}-${token.startTimestamp}`,
+                  text: text.replace(/^\s+/, ""),
+                  duration: Math.max(
+                    0,
+                    token.endTimestamp - token.startTimestamp,
+                  ),
+                  isFinal: token.isFinal,
+                  translation: pending || undefined,
+                }
+              : null;
 
-    for (const speakerId in speakerTrans) {
-      const origSegs = segments.filter((s) => s.speakerId === speakerId);
-      const transText = speakerTrans[speakerId].trim();
-      if (origSegs.length === 0 || !transText) continue;
-
-      if (origSegs.length === 1) {
-        origSegs[0].translation = transText;
-      } else {
-        const allOrigSentences: { segIndex: number; text: string }[] = [];
-        for (let sIdx = 0; sIdx < origSegs.length; sIdx++) {
-          const sentences = splitSentences(origSegs[sIdx].text);
-          if (sentences.length === 0) {
-            allOrigSentences.push({ segIndex: sIdx, text: origSegs[sIdx].text });
+          if (current) {
+            activeSegBySpeaker[speakerId] = current;
+            segments.push(current);
           } else {
-            for (const s of sentences) {
-              allOrigSentences.push({ segIndex: sIdx, text: s });
-            }
+            delete activeSegBySpeaker[speakerId];
           }
+        } else {
+          current.text += text;
+          current.endTimestamp = Math.max(
+            current.endTimestamp,
+            token.endTimestamp,
+          );
+          current.duration = Math.max(
+            0,
+            current.endTimestamp - current.startTimestamp,
+          );
+          current.isFinal = token.isFinal;
         }
+      }
 
-        const transSentences = splitSentences(transText);
-        const segmentTranslations: string[][] = origSegs.map(() => []);
-
-        for (let i = 0; i < allOrigSentences.length; i++) {
-          const origSent = allOrigSentences[i];
-          if (i < transSentences.length) {
-            segmentTranslations[origSent.segIndex].push(transSentences[i]);
-          }
-        }
-
-        if (transSentences.length > allOrigSentences.length) {
-          const leftover = transSentences.slice(allOrigSentences.length).join(" ");
-          if (leftover && segmentTranslations.length > 0) {
-            segmentTranslations[segmentTranslations.length - 1].push(leftover);
-          }
-        }
-
-        for (let i = 0; i < origSegs.length; i++) {
-          const joined = segmentTranslations[i].join(" ").trim();
-          if (joined) {
-            origSegs[i].translation = joined;
-          }
-        }
+      if (isEnd && current) {
+        current.isFinal = true;
+        lastFinalizedSegBySpeaker[speakerId] = current;
+        delete activeSegBySpeaker[speakerId];
       }
     }
   }
 
-  return segments;
+  return segments
+    .filter((s) => s.text.trim().length > 0)
+    .map((s) => ({
+      ...s,
+      translation: s.translation?.trim() || undefined,
+    }));
 };
 
 export const transcriptionSlice = createSlice({
