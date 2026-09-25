@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
 
 /* Custom Scrollbar Styles for modern Webkit browsers (Chrome, Safari, Edge) */
 ::-webkit-scrollbar {

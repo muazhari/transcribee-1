@@ -11,6 +11,7 @@ import {
 import {
   setSessionId,
   updateTranscripts,
+  commitLiveTranscripts,
 } from "../lib/store/slices/transcriptionSlice";
 import {
   startRecordingState,
@@ -183,6 +184,7 @@ export default function Home() {
     await audioCaptureManager.stop();
     sonioxStreamClient.disconnect();
     dispatch(stopRecordingState());
+    dispatch(commitLiveTranscripts());
   }, [dispatch]);
 
   const startRecording = useCallback(async () => {
