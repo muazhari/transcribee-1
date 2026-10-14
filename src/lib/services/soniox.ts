@@ -26,7 +26,7 @@ export interface SonioxCallbacks {
   onOpen?: () => void;
   onClose?: () => void;
   onTokens: (tokens: SonioxToken[]) => void;
-  onError?: (error: Event) => void;
+  onError?: (error: Event | string) => void;
 }
 
 export class SonioxStreamClient {
@@ -41,8 +41,6 @@ export class SonioxStreamClient {
     this.ws.binaryType = "arraybuffer";
 
     this.ws.onopen = () => {
-      console.log("Soniox WebSocket onOpen");
-
       const translation = config.enableTranslation
         ? config.translationMode === "one-way"
           ? { type: "one_way", target_language: config.translationTargetLanguage || "id" }
@@ -67,10 +65,14 @@ export class SonioxStreamClient {
     };
 
     this.ws.onmessage = (event) => {
-      console.log("Soniox WebSocket onMessage:", event);
       if (typeof event.data === "string") {
         try {
           const response = JSON.parse(event.data);
+          if (response.error_code) {
+            this.callbacks?.onError?.(
+              `${response.error_code}: ${response.error_message ?? "Unknown Soniox error"}`,
+            );
+          }
           if (response.tokens && this.callbacks?.onTokens) {
             this.callbacks.onTokens(response.tokens);
           }

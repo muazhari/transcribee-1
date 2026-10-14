@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
-import { db } from "../lib/services/db";
+import { db, Transcript } from "../lib/services/db";
 import {
   setSessions,
   setActiveSession,
@@ -80,14 +80,32 @@ export default function Home() {
     loadSessions();
   }, [dispatch]);
 
-  // Sync transcripts change to IndexedDB
+  // Sync transcripts to IndexedDB at most every 2s (rewriting the whole session on every token batch is O(n) each time)
+  const pendingSave = useRef<Transcript[] | null>(null);
+  const flushSave = useCallback(() => {
+    const pending = pendingSave.current;
+    if (!pending) return;
+    pendingSave.current = null;
+    db.saveTranscripts(pending).catch((err) => {
+      console.error("Failed to sync transcripts to DB:", err);
+    });
+  }, []);
+
   useEffect(() => {
+    // Pending transcripts of a previous session must not wait for the timer
+    if (pendingSave.current?.[0]?.sessionId !== activeSession?.id) flushSave();
     if (activeSession && transcripts.length > 0) {
-      db.saveTranscripts(transcripts).catch((err) => {
-        console.error("Failed to sync transcripts to DB:", err);
-      });
+      pendingSave.current = transcripts;
     }
-  }, [transcripts, activeSession]);
+  }, [transcripts, activeSession, flushSave]);
+
+  useEffect(() => {
+    const timer = setInterval(flushSave, 2000);
+    return () => {
+      clearInterval(timer);
+      flushSave();
+    };
+  }, [flushSave]);
 
   const handleNewSession = async () => {
     if (isRecording) {
@@ -125,7 +143,7 @@ export default function Home() {
     }
   };
 
-  const startRecordingConnection = useCallback(async (offsetTimestamp: number) => {
+  const startRecordingConnection = useCallback((offsetTimestamp: number) => {
     if (!activeSession) return;
 
     // Connect to Soniox STT WebSocket
@@ -136,12 +154,32 @@ export default function Home() {
         model: config.transcriptionModel,
       },
       {
-        onOpen: () => dispatch(startRecordingState()),
+        // Start capture only once the socket is open so no audio is saved without also being sent
+        onOpen: () => {
+          dispatch(startRecordingState());
+          audioCaptureManager
+            .start(
+              activeSession.id,
+              config.audioRouting,
+              (pcmData) => sonioxStreamClient.sendAudio(pcmData),
+              offsetTimestamp,
+            )
+            .catch((err: unknown) => {
+              console.error("Audio recording setup failed:", err);
+              const errMsg = err instanceof Error ? err.message : String(err);
+              alert(`Could not start recording: ${errMsg}`);
+              sonioxStreamClient.disconnect();
+              dispatch(stopRecordingState());
+            });
+        },
         onClose: async () => {
           await audioCaptureManager.stop();
           dispatch(stopRecordingState());
         },
-        onError: () => dispatch(setStreamHealth("poor")),
+        onError: (error) => {
+          dispatch(setStreamHealth("poor"));
+          if (typeof error === "string") alert(`Soniox error: ${error}`);
+        },
         onTokens: (tokens) => {
           const mappedTokens = tokens.map((t) => {
             const start = t.start_ms ?? 0;
@@ -168,16 +206,6 @@ export default function Home() {
         },
       },
     );
-
-    // Start capture loop
-    await audioCaptureManager.start(
-      activeSession.id,
-      config.audioRouting,
-      (pcmData) => {
-        sonioxStreamClient.sendAudio(pcmData);
-      },
-      offsetTimestamp,
-    );
   }, [activeSession, config, dispatch]);
 
   const stopRecording = useCallback(async () => {
@@ -185,7 +213,8 @@ export default function Home() {
     sonioxStreamClient.disconnect();
     dispatch(stopRecordingState());
     dispatch(commitLiveTranscripts());
-  }, [dispatch]);
+    flushSave();
+  }, [dispatch, flushSave]);
 
   const startRecording = useCallback(async () => {
     if (!activeSession) {
@@ -201,14 +230,13 @@ export default function Home() {
     try {
       // Calculate timestamp offset if there is existing recording data
       let offsetTimestamp = 0;
-      const chunks = await db.getSessionAudioChunks(activeSession.id);
-      if (chunks.length > 0) {
-        const lastChunk = chunks[chunks.length - 1];
+      const lastChunk = await db.getLastAudioChunk(activeSession.id);
+      if (lastChunk) {
         const lastChunkDurationMs = lastChunk.data.length / 16;
         offsetTimestamp = lastChunk.startTimestamp + lastChunkDurationMs;
       }
 
-      await startRecordingConnection(offsetTimestamp);
+      startRecordingConnection(offsetTimestamp);
     } catch (err: unknown) {
       console.error("Audio recording setup failed:", err);
       const errMsg = err instanceof Error ? err.message : String(err);

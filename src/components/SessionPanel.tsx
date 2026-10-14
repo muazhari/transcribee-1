@@ -84,8 +84,8 @@ export default function SessionPanel({
     try {
       await db.deleteSession(sessionId);
       dispatch(removeSessionFromList(sessionId));
-      dispatch(clearChatHistory());
       if (activeSession?.id === sessionId) {
+        dispatch(clearChatHistory());
         dispatch(setSessionId(null));
       }
     } catch (error) {

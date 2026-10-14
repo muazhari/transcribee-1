@@ -9,11 +9,9 @@ import {
   clearChatHistory,
   setLoading,
   recalculateTokens,
-  truncateChatHistory,
-  setTokenLimitTruncatedFlag,
 } from "../lib/store/slices/chatContextSlice";
-import { truncateOldTranscripts } from "../lib/store/slices/transcriptionSlice";
 import { addChatPairToActive } from "../lib/store/slices/persistenceSlice";
+import { Transcript } from "../lib/services/db";
 
 import Button from "./atoms/Button";
 import Input from "./atoms/Input";
@@ -21,6 +19,47 @@ import ChatMessage from "./molecules/ChatMessage";
 import TokenMeter from "./atoms/TokenMeter";
 import WarningBanner from "./atoms/WarningBanner";
 import { generateSrtContent } from "@/lib/utils/exportUtils";
+
+type ChatTurn = { role: "user" | "assistant"; content: string };
+
+// Smart FIFO: drop the oldest transcript segments (whole speaker turns), then the oldest chat
+// messages, until the prompt fits under the token limit. Only affects the prompt, never stored data.
+function fitToTokenLimit(
+  transcripts: Transcript[],
+  chatHistory: ChatTurn[],
+  question: string,
+  tokenLimit: number,
+) {
+  const tokensFor = (t: number, c: number) => {
+    const chat = chatHistory
+      .slice(c)
+      .map((msg) => msg.content)
+      .join("\n");
+    const prompt = `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${generateSrtContent(transcripts.slice(t))}\n${chat}\n${question}`;
+    return Math.ceil(prompt.length / 4);
+  };
+  // Smallest index in [0, n] that satisfies fits() (fits is monotonic: dropping more never grows the prompt)
+  const firstFit = (n: number, fits: (i: number) => boolean) => {
+    let lo = 0;
+    let hi = n;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (fits(mid)) hi = mid;
+      else lo = mid + 1;
+    }
+    return lo;
+  };
+
+  const t = firstFit(transcripts.length, (i) => tokensFor(i, 0) < tokenLimit);
+  const c =
+    tokensFor(t, 0) < tokenLimit
+      ? 0
+      : firstFit(
+          chatHistory.length,
+          (i) => tokensFor(transcripts.length, i) < tokenLimit,
+        );
+  return { transcripts: transcripts.slice(t), chatHistory: chatHistory.slice(c) };
+}
 
 export default function ChatPanel() {
   const dispatch = useAppDispatch();
@@ -72,73 +111,6 @@ export default function ChatPanel() {
     dispatch,
   ]);
 
-  // Handle Smart FIFO Context Window Truncation (100% capacity)
-  useEffect(() => {
-    if (tokenLimitTruncated && activeSession) {
-      let sliceTransIndex = 0;
-      let sliceChatIndex = 0;
-
-      const calculateTokensForSlice = (
-        transSlice: number,
-        chatSlice: number,
-      ) => {
-        const slicedTransText = generateSrtContent(
-          transcripts.slice(transSlice),
-        );
-        const slicedChat = chatHistory.slice(chatSlice);
-
-        const systemPrompt = `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${slicedTransText}`;
-        const chatHistoryText = slicedChat.map((msg) => msg.content).join("\n");
-        const totalInputText = `${systemPrompt}\n${chatHistoryText}\n${question}`;
-        return Math.ceil(totalInputText.length / 4);
-      };
-
-      let currentTokens = calculateTokensForSlice(0, 0);
-
-      // 1. Truncate transcripts first (FIFO)
-      while (
-        currentTokens >= tokenLimit &&
-        sliceTransIndex < transcripts.length
-      ) {
-        sliceTransIndex++;
-        currentTokens = calculateTokensForSlice(sliceTransIndex, 0);
-      }
-
-      // 2. If transcripts are fully truncated and tokens still exceed limit, truncate chat history (FIFO)
-      while (
-        currentTokens >= tokenLimit &&
-        sliceChatIndex < chatHistory.length
-      ) {
-        sliceChatIndex++;
-        currentTokens = calculateTokensForSlice(
-          transcripts.length,
-          sliceChatIndex,
-        );
-      }
-
-      // Apply truncations if any
-      if (sliceTransIndex > 0 || sliceChatIndex > 0) {
-        if (sliceTransIndex > 0) {
-          dispatch(truncateOldTranscripts(sliceTransIndex));
-        }
-        if (sliceChatIndex > 0) {
-          dispatch(truncateChatHistory(sliceChatIndex));
-        }
-      }
-
-      // Reset the truncation alert trigger
-      dispatch(setTokenLimitTruncatedFlag(false));
-    }
-  }, [
-    tokenLimitTruncated,
-    transcripts,
-    chatHistory,
-    question,
-    tokenLimit,
-    activeSession,
-    dispatch,
-  ]);
-
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // Clean up abort controller on unmount
@@ -176,9 +148,15 @@ export default function ChatPanel() {
     dispatch(setLoading(true));
     setStreamedResponse("");
 
-    // Compile active transcripts context
+    // Compile active transcripts context (oldest turns dropped if over the token limit)
+    const fitted = fitToTokenLimit(
+      transcripts,
+      chatHistory,
+      queryText,
+      tokenLimit,
+    );
     const contextText =
-      generateSrtContent(transcripts) ||
+      generateSrtContent(fitted.transcripts) ||
       "No transcription records available yet.";
 
     let currentResponse = "";
@@ -188,7 +166,7 @@ export default function ChatPanel() {
           apiKey: config.googleApiKey,
           model: config.aiModel,
           context: contextText,
-          chatHistory: chatHistory,
+          chatHistory: fitted.chatHistory,
           question: queryText,
           signal: controller.signal,
         },
@@ -295,8 +273,9 @@ export default function ChatPanel() {
       {/* Warnings & Notices */}
       {tokenLimitTruncated && (
         <WarningBanner type="error">
-          <strong>Context Window Full:</strong> Exceeded 100% capacity. FIFO
-          truncation was executed to preserve latest speaker turns.
+          <strong>Context Window Full:</strong> Exceeded 100% capacity. The
+          oldest speaker turns are left out of the AI context (your saved
+          transcript is untouched).
         </WarningBanner>
       )}
       {!tokenLimitTruncated && tokenLimitExceeded && (

@@ -40,9 +40,6 @@ export const chatContextSlice = createSlice({
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.isLoading = action.payload;
     },
-    setTokenLimit: (state, action: PayloadAction<number>) => {
-      state.tokenLimit = action.payload;
-    },
     recalculateTokens: (
       state,
       action: PayloadAction<{
@@ -55,7 +52,7 @@ export const chatContextSlice = createSlice({
       const { transcriptsText, chatHistoryText, questionText, aiModel } =
         action.payload;
 
-      state.tokenLimit = tokenLimits[aiModel] || 0;
+      state.tokenLimit = tokenLimits[aiModel] ?? 1000000;
 
       const systemPrompt = `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${transcriptsText}`;
       const totalInputText = `${systemPrompt}\n${chatHistoryText}\n${questionText}`;
@@ -68,13 +65,6 @@ export const chatContextSlice = createSlice({
       state.tokenLimitExceeded = pct >= 85;
       state.tokenLimitTruncated = pct >= 100;
     },
-    truncateChatHistory: (state, action: PayloadAction<number>) => {
-      if (action.payload <= 0) return;
-      state.chatHistory = state.chatHistory.slice(action.payload);
-    },
-    setTokenLimitTruncatedFlag: (state, action: PayloadAction<boolean>) => {
-      state.tokenLimitTruncated = action.payload;
-    },
   },
 });
 
@@ -83,9 +73,6 @@ export const {
   setChatHistory,
   clearChatHistory,
   setLoading,
-  setTokenLimit,
   recalculateTokens,
-  truncateChatHistory,
-  setTokenLimitTruncatedFlag,
 } = chatContextSlice.actions;
 export default chatContextSlice.reducer;

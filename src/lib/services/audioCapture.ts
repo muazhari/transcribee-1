@@ -19,6 +19,8 @@ export class AudioCaptureManager {
   private pendingSaves = new Set<Promise<void>>();
   private resamplerPosition: number = 0;
   private resamplerLastSample: number = 0;
+  private pcmBuffer: Int16Array[] = [];
+  private pcmBufferLength: number = 0;
 
   async start(
     sessionId: string,
@@ -159,26 +161,9 @@ export class AudioCaptureManager {
 
         this.onAudioDataCallback?.(pcm16);
 
-        if (this.sessionId) {
-          const chunkStartMs =
-            (this.recordedSamples / 16000) * 1000 + this.offsetTimestamp;
-          this.recordedSamples += pcm16.length;
-
-          const savePromise = db
-            .saveAudioChunk({
-              sessionId: this.sessionId,
-              startTimestamp: chunkStartMs,
-              data: pcm16,
-            })
-            .catch((err: unknown) => {
-              console.error("Failed to save audio chunk to DB:", err);
-            });
-
-          this.pendingSaves.add(savePromise);
-          savePromise.finally(() => {
-            this.pendingSaves.delete(savePromise);
-          });
-        }
+        this.pcmBuffer.push(pcm16);
+        this.pcmBufferLength += pcm16.length;
+        if (this.pcmBufferLength >= 16000) this.flushPcm();
       };
     } catch (error) {
       await this.stop();
@@ -199,6 +184,7 @@ export class AudioCaptureManager {
     this.micSource = null;
     this.speakerSource?.disconnect();
     this.speakerSource = null;
+    this.flushPcm();
 
     // 3. Stop hardware streams
     this.micStream?.getTracks().forEach((track) => track.stop());
@@ -231,6 +217,41 @@ export class AudioCaptureManager {
     this.offsetTimestamp = 0;
     this.resamplerPosition = 0;
     this.resamplerLastSample = 0;
+  }
+
+  // Save buffered PCM as one DB record
+  private flushPcm() {
+    const total = this.pcmBufferLength;
+    const parts = this.pcmBuffer;
+    this.pcmBuffer = [];
+    this.pcmBufferLength = 0;
+    if (!this.sessionId || total === 0) return;
+
+    const data = new Int16Array(total);
+    let offset = 0;
+    for (const part of parts) {
+      data.set(part, offset);
+      offset += part.length;
+    }
+
+    const chunkStartMs =
+      (this.recordedSamples / 16000) * 1000 + this.offsetTimestamp;
+    this.recordedSamples += total;
+
+    const savePromise = db
+      .saveAudioChunk({
+        sessionId: this.sessionId,
+        startTimestamp: chunkStartMs,
+        data,
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to save audio chunk to DB:", err);
+      });
+
+    this.pendingSaves.add(savePromise);
+    savePromise.finally(() => {
+      this.pendingSaves.delete(savePromise);
+    });
   }
 
   // Downsampling using stateful linear interpolation resampler to prevent aliasing robotic buzz and boundary phase clicks

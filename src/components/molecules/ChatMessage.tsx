@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { Button } from "@heroui/react";
+import Button from "../atoms/Button";
 
 interface ChatMessageProps {
   role?: "user" | "assistant";
@@ -121,10 +121,10 @@ export default function ChatMessage({
         </span>
         {content && !isStreaming && (
           <Button
-            size="sm"
+            size="none"
             variant="ghost"
-            className="h-6 min-w-0 text-xs opacity-70 hover:opacity-100 cursor-pointer"
-            onPress={handleCopy}
+            className="h-6 min-w-0 px-2 rounded-md text-xs opacity-70 hover:opacity-100"
+            onClick={handleCopy}
           >
             {copied ? "✔️" : "📋"}
           </Button>

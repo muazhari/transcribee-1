@@ -22,29 +22,14 @@ export interface TranscriptBlockProps {
    * Triggered when clicking an individual word or the header timestamp range.
    */
   onPlaySegment?: (startTimestampMs: number, endTimestampMs: number) => void;
-
-  /**
-   * Legacy alias for onSeekToTimestamp.
-   */
-  onClickBlock?: (startTimestamp: number) => void;
-
-  /**
-   * Legacy alias for onPlaySegment.
-   */
-  onClickWord?: (startTimestamp: number, endTimestamp: number) => void;
 }
 
 export default function TranscriptBlock({
   transcript,
   isActive = false,
-  onSeekToTimestamp,
-  onPlaySegment,
-  onClickBlock,
-  onClickWord,
+  onSeekToTimestamp: handleSeek,
+  onPlaySegment: handlePlaySegment,
 }: TranscriptBlockProps) {
-  // Resolve unified interaction handlers (preferring new explicit props over legacy aliases)
-  const handleSeek = onSeekToTimestamp || onClickBlock;
-  const handlePlaySegment = onPlaySegment || onClickWord;
 
   const wordRanges = getWordTimestampRanges(transcript);
 

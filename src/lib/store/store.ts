@@ -11,6 +11,7 @@ import persistenceReducer from "./slices/persistenceSlice";
 const persistConfig = {
   key: 'root',
   storage,
+  whitelist: ['config'],
 };
 
 const rootReducer = combineReducers({

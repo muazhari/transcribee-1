@@ -37,6 +37,8 @@ export interface AudioChunk {
 
 const DB_NAME = "TranscribeeDB";
 const DB_VERSION = 1;
+// Audio is stored in ~1s records; range queries look back this far.
+export const MAX_AUDIO_CHUNK_MS = 2000;
 
 class TranscribeeDB {
   private dbPromise: Promise<IDBDatabase> | null = null;
@@ -137,11 +139,6 @@ class TranscribeeDB {
   }
 
   // --- Transcripts ---
-  async saveTranscript(transcript: Transcript): Promise<void> {
-    const store = await this.getStore("transcripts", "readwrite");
-    await this.req(store.put(transcript));
-  }
-
   async saveTranscripts(transcripts: Transcript[]): Promise<void> {
     if (transcripts.length === 0) return;
     const sessionId = transcripts[0].sessionId;
@@ -191,19 +188,32 @@ class TranscribeeDB {
     return chunks.sort((a, b) => a.startTimestamp - b.startTimestamp);
   }
 
+  async getLastAudioChunk(sessionId: string): Promise<AudioChunk | null> {
+    const store = await this.getStore("audioChunks");
+    const range = IDBKeyRange.bound([sessionId, -Infinity], [sessionId, Infinity]);
+    const cursor = await this.req(
+      store.index("sessionId_startTimestamp").openCursor(range, "prev"),
+    );
+    return cursor ? (cursor.value as AudioChunk) : null;
+  }
+
   async getAudioChunksForRange(
     sessionId: string,
     startTimestampMs: number,
     endTimestampMs: number,
   ): Promise<AudioChunk[]> {
-    const chunks = await this.getSessionAudioChunks(sessionId);
-    return chunks.filter((chunk) => {
-      const chunkDurationMs = chunk.data.length / 16;
-      return (
-        chunk.startTimestamp <= endTimestampMs &&
-        chunk.startTimestamp + chunkDurationMs >= startTimestampMs
-      );
-    });
+    const store = await this.getStore("audioChunks");
+    // Look back by one max chunk length so a chunk that starts before the range but overlaps it is included.
+    const range = IDBKeyRange.bound(
+      [sessionId, startTimestampMs - MAX_AUDIO_CHUNK_MS],
+      [sessionId, endTimestampMs],
+    );
+    const chunks = await this.req<AudioChunk[]>(
+      store.index("sessionId_startTimestamp").getAll(range),
+    );
+    return chunks.filter(
+      (chunk) => chunk.startTimestamp + chunk.data.length / 16 >= startTimestampMs,
+    );
   }
 }
 

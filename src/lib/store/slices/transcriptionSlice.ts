@@ -199,19 +199,6 @@ export const transcriptionSlice = createSlice({
       state.nonFinalTranscripts = [];
       state.currentOffset = null;
     },
-    truncateOldTranscripts: (state, action: PayloadAction<number>) => {
-      const count = action.payload;
-      if (count <= 0) return;
-      if (count >= state.transcripts.length) {
-        state.transcripts = [];
-        state.savedTranscripts = [];
-        state.finalTranscripts = [];
-        state.nonFinalTranscripts = [];
-        return;
-      }
-      state.transcripts = state.transcripts.slice(count);
-      state.savedTranscripts = state.savedTranscripts.slice(count);
-    },
   },
 });
 
@@ -221,7 +208,6 @@ export const {
   clearTranscripts,
   updateTranscripts,
   commitLiveTranscripts,
-  truncateOldTranscripts,
 } = transcriptionSlice.actions;
 
 export default transcriptionSlice.reducer;
