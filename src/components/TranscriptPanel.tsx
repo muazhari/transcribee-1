@@ -70,37 +70,36 @@ export default function TranscriptPanel({
     setShowScrollBottom(!isAtBottom && transcripts.length > 0);
   };
 
-  const handleTranscriptClick = (
-    startTimestamp: number,
-    endTimestamp: number,
-  ) => {
-    if (!activeSession) return;
-    AudioCaptureManager.playTokenAudio(
-      activeSession.id,
-      startTimestamp,
-      endTimestamp,
+  const handleTranscriptClick = (startTimestamp: number, endTimestamp: number) => {
+    if (activeSession) {
+      AudioCaptureManager.playTokenAudio(
+        activeSession.id,
+        startTimestamp,
+        endTimestamp,
+      );
+    }
+  };
+
+  const baseFilename = (
+    activeSession?.title ||
+    `Session - ${new Date(activeSession?.createdAt ?? 0).toLocaleString()}`
+  )
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
+
+  const handleExportSrt = () =>
+    downloadFile(
+      generateSrtContent(transcripts),
+      `${baseFilename}-transcript.srt`,
+      "text/srt",
     );
-  };
 
-  const getSessionBaseFilename = (): string => {
-    if (!activeSession) return "transcript";
-    const title =
-      activeSession.title ||
-      `Session - ${new Date(activeSession.createdAt).toLocaleString()}`;
-    return title.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-  };
-
-  const handleExportSrt = () => {
-    if (!activeSession) return;
-    const filename = `${getSessionBaseFilename()}-transcript.srt`;
-    downloadFile(generateSrtContent(transcripts), filename, "text/srt");
-  };
-
-  const handleExportJson = () => {
-    if (!activeSession) return;
-    const filename = `${getSessionBaseFilename()}-transcript.json`;
-    downloadFile(JSON.stringify(transcripts, null, 2), filename, "application/json");
-  };
+  const handleExportJson = () =>
+    downloadFile(
+      JSON.stringify(transcripts, null, 2),
+      `${baseFilename}-transcript.json`,
+      "application/json",
+    );
 
   const handleExportAudio = async () => {
     if (!activeSession) return;
@@ -109,16 +108,15 @@ export default function TranscriptPanel({
       const url = await AudioCaptureManager.getSessionAudioWavUrl(
         activeSession.id,
       );
-      if (url) {
-        const filename = `${getSessionBaseFilename()}.wav`;
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-      } else {
+      if (!url) {
         alert("No audio recorded for this session yet.");
+        return;
       }
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${baseFilename}.wav`;
+      a.click();
+      URL.revokeObjectURL(url);
     } catch (e) {
       console.error("Failed to compile audio for export:", e);
       alert("Failed to export audio.");
@@ -145,42 +143,28 @@ export default function TranscriptPanel({
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
       {/* Session Title Header */}
-      <div className="px-6 pt-5 pb-4 border-b border-white/10 flex flex-col gap-3">
-        {/* Title + status row */}
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-            <input
-              type="text"
-              value={activeSession.title || ""}
-              onChange={(e) => onRenameSession(e.target.value)}
-              placeholder={`Session - ${new Date(
-                activeSession.createdAt,
-              ).toLocaleString()}`}
-              className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 w-full text-white placeholder-neutral-500 transition-colors truncate"
-            />
-          </div>
-
-          {/* Status badges */}
-          <div className="flex items-center gap-3 shrink-0">
-            {isRecording && (
-              <Badge
-                variant={streamHealth === "good" ? "green" : "red"}
-                pulsing={true}
-              >
-                Health: {streamHealth.toUpperCase()}
-              </Badge>
-            )}
-          </div>
-
-          {/* Export Dropdown */}
-          <ExportDropdown
-            onExportAudio={handleExportAudio}
-            onExportSrt={handleExportSrt}
-            onExportJson={handleExportJson}
-            exportingAudio={exportingAudio}
-            hasTranscripts={transcripts.length > 0}
-          />
-        </div>
+      <div className="px-6 pt-5 pb-4 border-b border-white/10 flex items-center gap-3 min-w-0">
+        <input
+          type="text"
+          value={activeSession.title || ""}
+          onChange={(e) => onRenameSession(e.target.value)}
+          placeholder={`Session - ${new Date(
+            activeSession.createdAt,
+          ).toLocaleString()}`}
+          className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 min-w-0 flex-1 text-white placeholder-neutral-500 transition-colors truncate"
+        />
+        {isRecording && (
+          <Badge variant={streamHealth === "good" ? "green" : "red"} pulsing>
+            Health: {streamHealth.toUpperCase()}
+          </Badge>
+        )}
+        <ExportDropdown
+          onExportAudio={handleExportAudio}
+          onExportSrt={handleExportSrt}
+          onExportJson={handleExportJson}
+          exportingAudio={exportingAudio}
+          hasTranscripts={transcripts.length > 0}
+        />
       </div>
 
       {/* Live Transcript Content Panel */}

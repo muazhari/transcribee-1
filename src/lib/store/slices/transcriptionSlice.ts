@@ -25,112 +25,77 @@ const buildSegments = (
   finalTokens: Transcript[],
   nonFinalTokens: Transcript[],
 ): Transcript[] => {
-  const allTokens = [...finalTokens, ...nonFinalTokens];
-  if (allTokens.length === 0) return [];
-
   const segments: Transcript[] = [];
-  const activeSegBySpeaker: Record<string, Transcript> = {};
-  const lastFinalizedSegBySpeaker: Record<string, Transcript> = {};
-  const pendingTransBySpeaker: Record<string, string> = {};
+  const active: Record<string, Transcript> = {};
+  const lastFinalized: Record<string, Transcript> = {};
+  const pending: Record<string, string> = {};
 
-  for (const token of allTokens) {
-    const isTranslation = token.translationStatus === "translation";
+  for (const token of [...finalTokens, ...nonFinalTokens]) {
     const speakerId = token.speakerId || "1";
     const isEnd = token.text.includes("<end>");
     const text = cleanText(token.text);
 
-    if (isTranslation) {
+    if (token.translationStatus === "translation") {
       if (!text) continue;
-      const targetSeg =
-        activeSegBySpeaker[speakerId] || lastFinalizedSegBySpeaker[speakerId];
+      const target = active[speakerId] || lastFinalized[speakerId];
+      if (target) target.translation = (target.translation || "") + text;
+      else pending[speakerId] = (pending[speakerId] || "") + text;
+      continue;
+    }
 
-      if (targetSeg) {
-        targetSeg.translation = (targetSeg.translation || "") + text;
-      } else {
-        pendingTransBySpeaker[speakerId] =
-          (pendingTransBySpeaker[speakerId] || "") + text;
-      }
-    } else {
-      // Original speech token
-      let current: Transcript | null | undefined = activeSegBySpeaker[speakerId];
+    let current: Transcript | undefined = active[speakerId];
 
-      if (!current) {
-        if (text.trim().length > 0 || !isEnd) {
-          const pending = pendingTransBySpeaker[speakerId];
-          delete pendingTransBySpeaker[speakerId];
+    // A language change closes the speaker's open segment.
+    if (current && token.language !== current.language) {
+      current.isFinal = true;
+      lastFinalized[speakerId] = current;
+      delete active[speakerId];
+      current = undefined;
+    }
 
-          current = {
-            ...token,
-            id: `${token.sessionId}-${token.offsetTimestamp || 0}-${speakerId}-${token.startTimestamp}`,
-            text: text.replace(/^\s+/, ""),
-            duration: Math.max(0, token.endTimestamp - token.startTimestamp),
-            isFinal: token.isFinal,
-            translation: pending || undefined,
-          };
-          activeSegBySpeaker[speakerId] = current;
-          segments.push(current);
-        }
-      } else {
-        const isBoundary =
-          token.speakerId !== current.speakerId ||
-          token.language !== current.language;
+    if (current) {
+      current.text += text;
+      current.endTimestamp = Math.max(current.endTimestamp, token.endTimestamp);
+      current.duration = Math.max(0, current.endTimestamp - current.startTimestamp);
+      current.isFinal = token.isFinal;
+    } else if (text.trim() || !isEnd) {
+      current = {
+        ...token,
+        id: `${token.sessionId}-${token.offsetTimestamp || 0}-${speakerId}-${token.startTimestamp}`,
+        text: text.trimStart(),
+        duration: Math.max(0, token.endTimestamp - token.startTimestamp),
+        translation: pending[speakerId] || undefined,
+      };
+      delete pending[speakerId];
+      active[speakerId] = current;
+      segments.push(current);
+    }
 
-        if (isBoundary) {
-          current.isFinal = true;
-          lastFinalizedSegBySpeaker[speakerId] = current;
-
-          const pending = pendingTransBySpeaker[speakerId];
-          delete pendingTransBySpeaker[speakerId];
-
-          current =
-            text.trim().length > 0 || !isEnd
-              ? {
-                  ...token,
-                  id: `${token.sessionId}-${token.offsetTimestamp || 0}-${speakerId}-${token.startTimestamp}`,
-                  text: text.replace(/^\s+/, ""),
-                  duration: Math.max(
-                    0,
-                    token.endTimestamp - token.startTimestamp,
-                  ),
-                  isFinal: token.isFinal,
-                  translation: pending || undefined,
-                }
-              : null;
-
-          if (current) {
-            activeSegBySpeaker[speakerId] = current;
-            segments.push(current);
-          } else {
-            delete activeSegBySpeaker[speakerId];
-          }
-        } else {
-          current.text += text;
-          current.endTimestamp = Math.max(
-            current.endTimestamp,
-            token.endTimestamp,
-          );
-          current.duration = Math.max(
-            0,
-            current.endTimestamp - current.startTimestamp,
-          );
-          current.isFinal = token.isFinal;
-        }
-      }
-
-      if (isEnd && current) {
-        current.isFinal = true;
-        lastFinalizedSegBySpeaker[speakerId] = current;
-        delete activeSegBySpeaker[speakerId];
-      }
+    if (isEnd && current) {
+      current.isFinal = true;
+      lastFinalized[speakerId] = current;
+      delete active[speakerId];
     }
   }
 
   return segments
-    .filter((s) => s.text.trim().length > 0)
-    .map((s) => ({
-      ...s,
-      translation: s.translation?.trim() || undefined,
-    }));
+    .filter((s) => s.text.trim())
+    .map((s) => ({ ...s, translation: s.translation?.trim() || undefined }));
+};
+
+const resetLive = (state: TranscriptionState) => {
+  state.finalTranscripts = [];
+  state.nonFinalTranscripts = [];
+  state.currentOffset = null;
+};
+
+const commitLive = (state: TranscriptionState) => {
+  state.savedTranscripts = state.transcripts.map((t) => ({
+    ...t,
+    isFinal: true,
+  }));
+  state.finalTranscripts = [];
+  state.nonFinalTranscripts = [];
 };
 
 export const transcriptionSlice = createSlice({
@@ -141,62 +106,38 @@ export const transcriptionSlice = createSlice({
       state.sessionId = action.payload;
       state.transcripts = [];
       state.savedTranscripts = [];
-      state.finalTranscripts = [];
-      state.nonFinalTranscripts = [];
-      state.currentOffset = null;
+      resetLive(state);
     },
     setTranscripts: (state, action: PayloadAction<Transcript[]>) => {
       state.transcripts = action.payload;
       state.savedTranscripts = action.payload;
-      state.finalTranscripts = [];
-      state.nonFinalTranscripts = [];
-      state.currentOffset = null;
+      resetLive(state);
     },
     clearTranscripts: (state) => {
       state.transcripts = [];
       state.savedTranscripts = [];
-      state.finalTranscripts = [];
-      state.nonFinalTranscripts = [];
-      state.currentOffset = null;
+      resetLive(state);
     },
     updateTranscripts: (state, action: PayloadAction<Transcript[]>) => {
       const newTokens = action.payload;
       if (newTokens.length === 0) return;
 
       const tokenOffset = newTokens[0].offsetTimestamp ?? 0;
-      const isNewStream =
-        state.currentOffset !== null && state.currentOffset !== tokenOffset;
-
-      if (isNewStream) {
-        state.savedTranscripts = state.transcripts.map((t) => ({
-          ...t,
-          isFinal: true,
-        }));
-        state.finalTranscripts = [];
-        state.nonFinalTranscripts = [];
+      if (state.currentOffset !== null && state.currentOffset !== tokenOffset) {
+        commitLive(state);
       }
       state.currentOffset = tokenOffset;
 
-      const newFinal = newTokens.filter((t) => t.isFinal);
-      const newNonFinal = newTokens.filter((t) => !t.isFinal);
+      state.finalTranscripts.push(...newTokens.filter((t) => t.isFinal));
+      state.nonFinalTranscripts = newTokens.filter((t) => !t.isFinal);
 
-      state.finalTranscripts.push(...newFinal);
-      state.nonFinalTranscripts = newNonFinal;
-
-      const liveSegments = buildSegments(
-        state.finalTranscripts,
-        state.nonFinalTranscripts,
-      );
-
-      state.transcripts = [...state.savedTranscripts, ...liveSegments];
+      state.transcripts = [
+        ...state.savedTranscripts,
+        ...buildSegments(state.finalTranscripts, state.nonFinalTranscripts),
+      ];
     },
     commitLiveTranscripts: (state) => {
-      state.savedTranscripts = state.transcripts.map((t) => ({
-        ...t,
-        isFinal: true,
-      }));
-      state.finalTranscripts = [];
-      state.nonFinalTranscripts = [];
+      commitLive(state);
       state.currentOffset = null;
     },
   },
