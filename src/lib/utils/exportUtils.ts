@@ -1,7 +1,5 @@
 import { Transcript } from "../services/db";
 
-export { formatMsToTime } from "./transcriptUtils";
-
 // Helper to format ms to SRT timestamp (HH:MM:SS,mmm)
 export const formatMsToSrtTime = (ms: number): string => {
   const s = Math.floor(ms / 1000);

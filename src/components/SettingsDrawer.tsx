@@ -6,6 +6,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { updateConfig } from "../lib/store/slices/configSlice";
+import { sonioxStreamClient } from "../lib/services/soniox";
+import { audioCaptureManager } from "../lib/services/audioCapture";
 
 import Button from "./atoms/Button";
 import Input from "./atoms/Input";
@@ -47,6 +49,9 @@ export default function SettingsDrawer({
 }: SettingsDrawerProps) {
   const dispatch = useAppDispatch();
   const config = useAppSelector((state) => state.config);
+  const activeSession = useAppSelector(
+    (state) => state.persistence.activeSession,
+  );
 
   const [showSonioxKey, setShowSonioxKey] = useState(false);
   const [showGoogleKey, setShowGoogleKey] = useState(false);
@@ -86,7 +91,27 @@ export default function SettingsDrawer({
         ? "mic-only"
         : values.audioRouting;
 
-    dispatch(updateConfig({ ...values, audioRouting }));
+    const updated = { ...values, audioRouting };
+    dispatch(updateConfig(updated));
+    sonioxStreamClient.updateConfig({
+      ...updated,
+      apiKey: updated.sonioxApiKey,
+      model: updated.transcriptionModel,
+    });
+    if (
+      audioCaptureManager.isRunning &&
+      activeSession &&
+      audioRouting !== config.audioRouting
+    ) {
+      audioCaptureManager
+        .start(
+          activeSession.id,
+          audioRouting,
+          (pcmData) => sonioxStreamClient.sendAudio(pcmData),
+          audioCaptureManager.getRecordedDurationMs(),
+        )
+        .catch((err) => console.error("Audio rerouting failed:", err));
+    }
     onCloseHandler();
   };
 

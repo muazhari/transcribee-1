@@ -22,13 +22,14 @@ export class AudioCaptureManager {
   private pcmBuffer: Int16Array[] = [];
   private pcmBufferLength: number = 0;
   private isCapturing: boolean = false;
+  private static activePlaybackContext: AudioContext | null = null;
 
   get isRunning(): boolean {
     return this.isCapturing;
   }
 
   getRecordedDurationMs(): number {
-    return (this.recordedSamples / 16000) * 1000 + this.offsetTimestamp;
+    return ((this.recordedSamples + this.pcmBufferLength) / 16000) * 1000 + this.offsetTimestamp;
   }
 
   async resumeIfSuspended(): Promise<void> {
@@ -302,26 +303,25 @@ export class AudioCaptureManager {
     inputSampleRate: number,
     outputSampleRate: number,
   ): Float32Array {
-    if (inputSampleRate === outputSampleRate) return buffer;
-    if (buffer.length === 0) return buffer;
+    if (inputSampleRate === outputSampleRate || buffer.length === 0) return buffer;
 
     const ratio = inputSampleRate / outputSampleRate;
-    const outputSamples: number[] = [];
-
     let pos = this.resamplerPosition;
+    const output = new Float32Array(Math.ceil((buffer.length - pos) / ratio));
+    let outIdx = 0;
+
     while (Math.floor(pos) + 1 < buffer.length) {
       const i1 = Math.floor(pos);
       const fraction = pos - i1;
       const s1 = i1 < 0 ? this.resamplerLastSample : buffer[i1];
-      const s2 = buffer[i1 + 1];
-      outputSamples.push(s1 * (1 - fraction) + s2 * fraction);
+      output[outIdx++] = s1 * (1 - fraction) + buffer[i1 + 1] * fraction;
       pos += ratio;
     }
 
     this.resamplerPosition = pos - buffer.length;
     this.resamplerLastSample = buffer[buffer.length - 1];
 
-    return new Float32Array(outputSamples);
+    return output.subarray(0, outIdx);
   }
 
   // Convert Float32Array [-1.0, 1.0] to Int16Array PCM
@@ -402,9 +402,16 @@ export class AudioCaptureManager {
       snippet[i] = croppedInt16[i] / 32768.0;
     }
 
-    // Play snippet using a short-lived AudioContext
+    // Play snippet using a short-lived AudioContext, closing any prior playback first
+    if (
+      this.activePlaybackContext &&
+      this.activePlaybackContext.state !== "closed"
+    ) {
+      this.activePlaybackContext.close().catch(() => {});
+    }
     const AudioContextClass = getAudioContextClass();
     const playCtx = new AudioContextClass();
+    this.activePlaybackContext = playCtx;
     try {
       const buffer = playCtx.createBuffer(1, snippet.length, SAMPLE_RATE);
       buffer.copyToChannel(snippet, 0);
@@ -414,6 +421,9 @@ export class AudioCaptureManager {
       source.connect(playCtx.destination);
 
       source.onended = () => {
+        if (this.activePlaybackContext === playCtx) {
+          this.activePlaybackContext = null;
+        }
         playCtx.close().catch((err) => {
           console.error(
             "Failed to close AudioContext after playback ended:",
@@ -424,6 +434,9 @@ export class AudioCaptureManager {
 
       source.start(0);
     } catch (e) {
+      if (this.activePlaybackContext === playCtx) {
+        this.activePlaybackContext = null;
+      }
       playCtx.close().catch(() => {});
       throw e;
     }
@@ -445,21 +458,22 @@ export class AudioCaptureManager {
     }
 
     // Encode to WAV (sample rate is 16000Hz mono 16-bit PCM)
-    const wavBuffer = this.encodeWav(combinedInt16, 16000);
-    const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
-    return URL.createObjectURL(wavBlob);
+    return URL.createObjectURL(this.encodeWav(combinedInt16, 16000));
   }
 
-  private static encodeWav(
-    samples: Int16Array,
-    sampleRate: number,
-  ): ArrayBuffer {
-    const buffer = new ArrayBuffer(44 + samples.length * 2);
+  static encodeWav(samples: Int16Array, sampleRate: number): Blob {
+    const byteLength = samples.length * 2;
+    const buffer = new ArrayBuffer(44 + byteLength);
     const view = new DataView(buffer);
-    this.writeString(view, 0, "RIFF");
-    view.setUint32(4, 36 + samples.length * 2, true);
-    this.writeString(view, 8, "WAVE");
-    this.writeString(view, 12, "fmt ");
+    const writeStr = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+    writeStr(0, "RIFF");
+    view.setUint32(4, 36 + byteLength, true);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
     view.setUint32(16, 16, true);
     view.setUint16(20, 1, true); // Raw PCM
     view.setUint16(22, 1, true); // Mono
@@ -467,20 +481,10 @@ export class AudioCaptureManager {
     view.setUint32(28, sampleRate * 2, true);
     view.setUint16(32, 2, true); // Block align (1 channel * 2 bytes)
     view.setUint16(34, 16, true); // 16-bit
-    this.writeString(view, 36, "data");
-    view.setUint32(40, samples.length * 2, true);
-
-    const offset = 44;
-    for (let i = 0; i < samples.length; i++) {
-      view.setInt16(offset + i * 2, samples[i], true);
-    }
-    return buffer;
-  }
-
-  private static writeString(view: DataView, offset: number, string: string) {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i));
-    }
+    writeStr(36, "data");
+    view.setUint32(40, byteLength, true);
+    new Int16Array(buffer, 44).set(samples);
+    return new Blob([buffer], { type: "audio/wav" });
   }
 }
 

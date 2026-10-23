@@ -5,7 +5,6 @@ import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { Session, db } from "../lib/services/db";
 import {
   setActiveSession,
-  setChatPairs,
   removeSessionFromList,
 } from "../lib/store/slices/persistenceSlice";
 import {
@@ -52,7 +51,6 @@ export default function SessionPanel({
       dispatch(setTranscripts(transcripts));
 
       const chats = await db.getChatPairs(session.id);
-      dispatch(setChatPairs(chats));
 
       const chatMessages = chats.flatMap((chat) => [
         { role: "user" as const, content: chat.question },

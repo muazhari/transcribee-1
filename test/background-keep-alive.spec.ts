@@ -141,6 +141,9 @@ test.beforeEach(async ({ page }) => {
         postMessage: () => {},
         onmessage: null as any,
       };
+      constructor() {
+        (window as any).__lastWorkletNode = this;
+      }
       connect() {}
       disconnect() {}
     }
@@ -325,10 +328,14 @@ test("Unexpected STT WebSocket disconnection automatically reconnects with UI st
   await expect(page.getByText("Background", { exact: true })).toBeVisible({ timeout: 5000 });
   await expect(page.locator("text=Health: GOOD")).toBeVisible();
 
-  // Trigger unexpected drop on the active WebSocket
+  // Trigger unexpected drop on the active WebSocket and buffer 0.5s of audio while disconnected
   await page.evaluate(() => {
     if ((window as any).__lastWs) {
       (window as any).__lastWs.simulateDrop();
+    }
+    const worklet = (window as any).__lastWorkletNode;
+    if (worklet?.port?.onmessage) {
+      worklet.port.onmessage({ data: new Float32Array(22050) });
     }
   });
 
@@ -342,9 +349,24 @@ test("Unexpected STT WebSocket disconnection automatically reconnects with UI st
   // Verify that new tokens arriving on the reconnected stream are rendered
   await expect(page.locator("text=Reconnected")).toBeVisible({ timeout: 5000 });
 
-  // Stop recording
+  // Stop recording and verify reconnected segment timestamp is not shifted by the buffered audio
   await page.locator("button:has-text('Stop Recording')").click();
   await expect(page.locator("button:has-text('Start Recording')")).toBeVisible();
+
+  const reconnectedStart = await page.evaluate(async () => {
+    const req = indexedDB.open("TranscribeeDB", 1);
+    const db = await new Promise<IDBDatabase>((res) => {
+      req.onsuccess = () => res(req.result);
+    });
+    const tx = db.transaction("transcripts", "readonly");
+    const all = await new Promise<any[]>((res) => {
+      const r = tx.objectStore("transcripts").getAll();
+      r.onsuccess = () => res(r.result);
+    });
+    db.close();
+    return all.find((t) => t.text.includes("Reconnected"))?.startTimestamp;
+  });
+  expect(reconnectedStart).toBe(100);
 });
 
 test("VisibilityChange to hidden triggers immediate IndexedDB save flush without waiting for regular interval", async ({

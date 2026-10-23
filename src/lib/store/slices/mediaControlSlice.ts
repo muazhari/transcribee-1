@@ -2,8 +2,6 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export interface MediaControlState {
   isRecording: boolean;
-  micConnected: boolean;
-  speakerConnected: boolean;
   streamHealth: "good" | "poor" | "none";
   isReconnecting: boolean;
   keepAliveActive: boolean;
@@ -11,8 +9,6 @@ export interface MediaControlState {
 
 const initialState: MediaControlState = {
   isRecording: false,
-  micConnected: false,
-  speakerConnected: false,
   streamHealth: "none",
   isReconnecting: false,
   keepAliveActive: false,
@@ -32,17 +28,6 @@ export const mediaControlSlice = createSlice({
       state.streamHealth = "none";
       state.isReconnecting = false;
       state.keepAliveActive = false;
-    },
-    setDeviceStatus: (
-      state,
-      action: PayloadAction<{ micConnected?: boolean; speakerConnected?: boolean }>
-    ) => {
-      if (action.payload.micConnected !== undefined) {
-        state.micConnected = action.payload.micConnected;
-      }
-      if (action.payload.speakerConnected !== undefined) {
-        state.speakerConnected = action.payload.speakerConnected;
-      }
     },
     setStreamHealth: (state, action: PayloadAction<"good" | "poor" | "none">) => {
       state.streamHealth = action.payload;
@@ -64,7 +49,6 @@ export const mediaControlSlice = createSlice({
 export const {
   startRecordingState,
   stopRecordingState,
-  setDeviceStatus,
   setStreamHealth,
   setIsReconnecting,
   setKeepAliveActive,

@@ -2,7 +2,7 @@ export interface Session {
   id: string;
   createdAt: Date;
   title: string | null;
-  audioBlobPath: string;
+  audioBlobPath?: string;
 }
 
 export interface Transcript {
@@ -120,11 +120,6 @@ class TranscribeeDB {
     return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  async getSession(id: string): Promise<Session | null> {
-    const store = await this.getStore("sessions");
-    return (await this.req<Session | undefined>(store.get(id))) || null;
-  }
-
   async deleteSession(id: string): Promise<void> {
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
@@ -175,6 +170,16 @@ class TranscribeeDB {
   async getChatPairs(sessionId: string): Promise<ChatPair[]> {
     const list = await this.getByIndex<ChatPair>("chatPairs", "sessionId", sessionId);
     return list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }
+
+  async clearChatPairs(sessionId: string): Promise<void> {
+    const db = await this.getDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("chatPairs", "readwrite");
+      this.deleteByIndex(tx.objectStore("chatPairs"), "sessionId", sessionId);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
   }
 
   // --- Audio Chunks ---

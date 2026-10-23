@@ -1,17 +1,15 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { askGeminiStream } from "../lib/services/gemini";
-import { db } from "../lib/services/db";
+import { db, Transcript } from "../lib/services/db";
 import {
   appendChatMessage,
   clearChatHistory,
   setLoading,
   recalculateTokens,
 } from "../lib/store/slices/chatContextSlice";
-import { addChatPairToActive } from "../lib/store/slices/persistenceSlice";
-import { Transcript } from "../lib/services/db";
 
 import Button from "./atoms/Button";
 import Input from "./atoms/Input";
@@ -90,21 +88,30 @@ export default function ChatPanel() {
     }
   }, [chatHistory, streamedResponse, isLoading]);
 
+  const transcriptsText = useMemo(
+    () => generateSrtContent(transcripts),
+    [transcripts],
+  );
+  const chatHistoryText = useMemo(
+    () => chatHistory.map((msg) => msg.content).join("\n"),
+    [chatHistory],
+  );
+
   // Recalculate token count and trigger alerts
   useEffect(() => {
     if (activeSession) {
       dispatch(
         recalculateTokens({
-          transcriptsText: generateSrtContent(transcripts),
-          chatHistoryText: chatHistory.map((msg) => msg.content).join("\n"),
+          transcriptsText,
+          chatHistoryText,
           questionText: question,
           aiModel: config.aiModel,
         }),
       );
     }
   }, [
-    transcripts,
-    chatHistory,
+    transcriptsText,
+    chatHistoryText,
     question,
     config.aiModel,
     activeSession,
@@ -112,15 +119,18 @@ export default function ChatPanel() {
   ]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const activeSessionIdRef = useRef<string | undefined>(activeSession?.id);
+  activeSessionIdRef.current = activeSession?.id;
 
-  // Clean up abort controller on unmount
+  // Abort in-flight stream when switching sessions or unmounting
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
-  }, []);
+  }, [activeSession?.id]);
 
   const handleCancel = () => {
     if (abortControllerRef.current) {
@@ -140,6 +150,7 @@ export default function ChatPanel() {
       return;
     }
 
+    const sessionId = activeSession.id;
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -172,44 +183,46 @@ export default function ChatPanel() {
         },
         (chunk) => {
           currentResponse += chunk;
-          setStreamedResponse(currentResponse);
+          if (activeSessionIdRef.current === sessionId) {
+            setStreamedResponse(currentResponse);
+          }
         },
         controller.signal,
       );
 
-      const persistChat = async (answer: string) => {
-        dispatch(appendChatMessage({ role: "assistant", content: answer }));
-        const chat = {
-          id: crypto.randomUUID(),
-          sessionId: activeSession.id,
-          question: queryText,
-          answer,
-          timestamp: new Date(),
-        };
-        await db.saveChatPair(chat);
-        dispatch(addChatPairToActive(chat));
-      };
-
-      await persistChat(result);
+      if (activeSessionIdRef.current === sessionId) {
+        dispatch(appendChatMessage({ role: "assistant", content: result }));
+      }
+      await db.saveChatPair({
+        id: crypto.randomUUID(),
+        sessionId,
+        question: queryText,
+        answer: result,
+        timestamp: new Date(),
+      });
     } catch (error: unknown) {
       const isAborted =
         (error instanceof Error &&
           (error.name === "AbortError" || error.message.includes("Aborted"))) ||
         controller.signal.aborted;
 
+      const isSameSession = activeSessionIdRef.current === sessionId;
       if (isAborted) {
         if (currentResponse.trim()) {
           const chat = {
             id: crypto.randomUUID(),
-            sessionId: activeSession.id,
+            sessionId,
             question: queryText,
             answer: `${currentResponse} *(Chat cancelled)*`,
             timestamp: new Date(),
           };
-          dispatch(appendChatMessage({ role: "assistant", content: chat.answer }));
+          if (isSameSession) {
+            dispatch(
+              appendChatMessage({ role: "assistant", content: chat.answer }),
+            );
+          }
           await db.saveChatPair(chat);
-          dispatch(addChatPairToActive(chat));
-        } else {
+        } else if (isSameSession) {
           dispatch(
             appendChatMessage({
               role: "assistant",
@@ -220,12 +233,14 @@ export default function ChatPanel() {
       } else {
         console.error("Gemini Chat Error:", error);
         const errMsg = error instanceof Error ? error.message : String(error);
-        dispatch(
-          appendChatMessage({
-            role: "assistant",
-            content: `Error: Failed to process query. ${errMsg}`,
-          }),
-        );
+        if (isSameSession) {
+          dispatch(
+            appendChatMessage({
+              role: "assistant",
+              content: `Error: Failed to process query. ${errMsg}`,
+            }),
+          );
+        }
       }
     } finally {
       setStreamedResponse("");
@@ -234,8 +249,11 @@ export default function ChatPanel() {
     }
   };
 
-  const handleClear = () => {
+  const handleClear = async () => {
     dispatch(clearChatHistory());
+    if (activeSession) {
+      await db.clearChatPairs(activeSession.id);
+    }
   };
 
   const suggestionPrompts = [

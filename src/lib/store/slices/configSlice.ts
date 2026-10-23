@@ -41,9 +41,8 @@ export const configSlice = createSlice({
     updateConfig: (state, action: PayloadAction<Partial<ConfigState>>) => {
       return { ...state, ...action.payload };
     },
-    resetConfig: () => initialState,
   },
 });
 
-export const { updateConfig, resetConfig } = configSlice.actions;
+export const { updateConfig } = configSlice.actions;
 export default configSlice.reducer;

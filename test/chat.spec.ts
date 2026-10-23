@@ -56,11 +56,26 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
     await copyBtn.click();
     await expect(page.getByRole("button", { name: "✔️" })).toBeVisible();
 
-    // Clear chat history
+    // Clear chat history and verify it is removed from IndexedDB as well
     await page.getByRole("button", { name: "Clear" }).click();
     await expect(
       page.getByText("Ask questions about this transcript"),
     ).toBeVisible();
+
+    const remainingChats = await page.evaluate(async () => {
+      const req = indexedDB.open("TranscribeeDB", 1);
+      const db = await new Promise<IDBDatabase>((res) => {
+        req.onsuccess = () => res(req.result);
+      });
+      const tx = db.transaction("chatPairs", "readonly");
+      const count = await new Promise<number>((res) => {
+        const r = tx.objectStore("chatPairs").count();
+        r.onsuccess = () => res(r.result);
+      });
+      db.close();
+      return count;
+    });
+    expect(remainingChats).toBe(0);
   });
 
   test("displays 85% token threshold warning banner when transcript approaches context capacity", async ({

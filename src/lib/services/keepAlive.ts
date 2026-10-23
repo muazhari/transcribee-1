@@ -1,3 +1,5 @@
+import { AudioCaptureManager } from "./audioCapture";
+
 export interface KeepAliveOptions {
   enableWakeLock?: boolean;
   onSleepWake?: (suspendedDurationMs: number) => void;
@@ -81,10 +83,6 @@ export class KeepAliveManager {
 
   get isRunning(): boolean {
     return this.isActive;
-  }
-
-  get hasWakeLock(): boolean {
-    return this.wakeLockSentinel !== null;
   }
 
   // --- Screen Wake Lock API ---
@@ -190,44 +188,11 @@ export class KeepAliveManager {
   // Values are alternating +1 and -1 (amplitude ~ -90dB, completely inaudible to human ear,
   // but treated as non-silent PCM signal by iOS/Android/Windows/macOS audio mixers)
   private generateInaudibleWavUrl(): string {
-    const sampleRate = 8000;
-    const durationSeconds = 1;
-    const numSamples = sampleRate * durationSeconds;
-    const buffer = new ArrayBuffer(44 + numSamples * 2);
-    const view = new DataView(buffer);
-
-    // RIFF Chunk Descriptor
-    this.writeAscii(view, 0, "RIFF");
-    view.setUint32(4, 36 + numSamples * 2, true);
-    this.writeAscii(view, 8, "WAVE");
-
-    // "fmt " sub-chunk
-    this.writeAscii(view, 12, "fmt ");
-    view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
-    view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
-    view.setUint16(22, 1, true); // NumChannels (1 for mono)
-    view.setUint32(24, sampleRate, true); // SampleRate
-    view.setUint32(28, sampleRate * 2, true); // ByteRate (SampleRate * 1 * 16/8)
-    view.setUint16(32, 2, true); // BlockAlign (1 * 16/8)
-    view.setUint16(34, 16, true); // BitsPerSample
-
-    // "data" sub-chunk
-    this.writeAscii(view, 36, "data");
-    view.setUint32(40, numSamples * 2, true);
-
-    const offset = 44;
-    for (let i = 0; i < numSamples; i++) {
-      view.setInt16(offset + i * 2, i % 2 === 0 ? 1 : -1, true);
+    const samples = new Int16Array(8000);
+    for (let i = 0; i < samples.length; i++) {
+      samples[i] = i % 2 === 0 ? 1 : -1;
     }
-
-    const blob = new Blob([buffer], { type: "audio/wav" });
-    return URL.createObjectURL(blob);
-  }
-
-  private writeAscii(view: DataView, offset: number, text: string): void {
-    for (let i = 0; i < text.length; i++) {
-      view.setUint8(offset + i, text.charCodeAt(i));
-    }
+    return URL.createObjectURL(AudioCaptureManager.encodeWav(samples, 8000));
   }
 
   // --- Media Session API ---

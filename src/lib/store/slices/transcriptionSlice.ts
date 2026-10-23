@@ -25,11 +25,13 @@ const finalizeAll = (transcripts: Transcript[]): Transcript[] =>
 const buildSegments = (
   tokens: Transcript[],
   baseIndex: number,
+  tokenOwner?: Map<Transcript, string>,
 ): Transcript[] => {
   const segments: Transcript[] = [];
   let current: Transcript | undefined;
-  const lastBySpeaker: Record<string, Transcript> = {};
-  const pending: Record<string, string> = {};
+  const bySpeaker: Record<string, Transcript[]> = {};
+  const lastTranslationTarget: Record<string, Transcript | undefined> = {};
+  const pending: Record<string, Transcript[]> = {};
 
   for (const token of tokens) {
     const speakerId = token.speakerId || "1";
@@ -38,16 +40,45 @@ const buildSegments = (
 
     if (token.translationStatus === "translation") {
       if (!text) continue;
-      const target = lastBySpeaker[speakerId];
-      if (target) target.translation = (target.translation || "") + text;
-      else pending[speakerId] = (pending[speakerId] || "") + text;
+      const list = bySpeaker[speakerId] ?? [];
+      const valid = list.filter(
+        (s) => !token.language || !s.language || s.language !== token.language,
+      );
+      const candidates = valid.length > 0 ? valid : list;
+      const byTime =
+        token.duration > 0
+          ? candidates.find(
+              (s) =>
+                token.startTimestamp >= s.startTimestamp &&
+                token.startTimestamp <= s.endTimestamp,
+            )
+          : undefined;
+      const target =
+        byTime ||
+        (lastTranslationTarget[speakerId] &&
+          candidates.includes(lastTranslationTarget[speakerId]!) &&
+          lastTranslationTarget[speakerId]) ||
+        candidates.find((s) => !s.translation) ||
+        candidates[candidates.length - 1];
+      if (target) {
+        target.translation = (target.translation || "") + text;
+        lastTranslationTarget[speakerId] = target;
+        tokenOwner?.set(token, target.id);
+      } else {
+        (pending[speakerId] ??= []).push(token);
+      }
       continue;
     }
+
+    lastTranslationTarget[speakerId] = undefined;
 
     if (!text) {
       if (isEnd && current) {
         current.isFinal = token.isFinal;
+        tokenOwner?.set(token, current.id);
         current = undefined;
+      } else {
+        tokenOwner?.set(token, "drop");
       }
       continue;
     }
@@ -74,18 +105,27 @@ const buildSegments = (
       );
       current.isFinal = token.isFinal;
       current.language ||= token.language;
+      tokenOwner?.set(token, current.id);
     } else if (text.trim()) {
+      const pendingTokens = pending[speakerId];
+      const pendingText = pendingTokens
+        ?.map((t) => cleanText(t.text))
+        .join("");
       current = {
         ...token,
         id: `${token.sessionId}-${baseIndex + segments.length}`,
         speakerId,
         text: text.trimStart(),
         duration: Math.max(0, token.endTimestamp - token.startTimestamp),
-        translation: pending[speakerId] || undefined,
+        translation: pendingText || undefined,
       };
-      delete pending[speakerId];
-      lastBySpeaker[speakerId] = current;
+      if (pendingTokens) {
+        for (const pt of pendingTokens) tokenOwner?.set(pt, current.id);
+        delete pending[speakerId];
+      }
+      (bySpeaker[speakerId] ??= []).push(current);
       segments.push(current);
+      tokenOwner?.set(token, current.id);
     }
 
     if (isEnd) {
@@ -127,11 +167,6 @@ export const transcriptionSlice = createSlice({
       state.savedTranscripts = finalized;
       resetLive(state);
     },
-    clearTranscripts: (state) => {
-      state.transcripts = [];
-      state.savedTranscripts = [];
-      resetLive(state);
-    },
     updateTranscripts: (state, action: PayloadAction<Transcript[]>) => {
       const newTokens = action.payload;
       if (newTokens.length === 0) return;
@@ -145,6 +180,23 @@ export const transcriptionSlice = createSlice({
 
       state.finalTranscripts.push(...newTokens.filter((t) => t.isFinal));
       const nonFinal = newTokens.filter((t) => !t.isFinal);
+
+      if (state.finalTranscripts.length > 64) {
+        const owner = new Map<Transcript, string>();
+        const finalSegs = buildSegments(
+          state.finalTranscripts,
+          state.savedTranscripts.length,
+          owner,
+        );
+        if (finalSegs.length > 2) {
+          const archived = finalizeAll(finalSegs.slice(0, -2));
+          const dropIds = new Set([...archived.map((s) => s.id), "drop"]);
+          state.savedTranscripts.push(...archived);
+          state.finalTranscripts = state.finalTranscripts.filter(
+            (t) => !dropIds.has(owner.get(t) ?? ""),
+          );
+        }
+      }
 
       state.transcripts = [
         ...state.savedTranscripts,
@@ -161,7 +213,6 @@ export const transcriptionSlice = createSlice({
 export const {
   setSessionId,
   setTranscripts,
-  clearTranscripts,
   updateTranscripts,
   commitLiveTranscripts,
 } = transcriptionSlice.actions;

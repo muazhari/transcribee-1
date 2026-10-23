@@ -173,6 +173,10 @@ test.describe("Session Management & Persistence Suite", () => {
 
     await expect(page.getByText("Session To Delete")).toBeVisible();
 
+    // Select the session first so deleting the active session is tested
+    await page.getByText("Session To Delete").click();
+    await expect(page.getByText("Doomed", { exact: true })).toBeVisible();
+
     const row = page
       .locator("div.group", { hasText: "Session To Delete" })
       .first();

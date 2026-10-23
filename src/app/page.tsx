@@ -16,7 +16,6 @@ import {
 import {
   startRecordingState,
   stopRecordingState,
-  setDeviceStatus,
   setStreamHealth,
   setIsReconnecting,
   setKeepAliveActive,
@@ -63,19 +62,6 @@ export default function Home() {
       try {
         const list = await db.getSessions();
         dispatch(setSessions(list));
-
-        // Check media devices status
-        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const hasMic = devices.some((d) => d.kind === "audioinput");
-          const hasSpeaker = devices.some((d) => d.kind === "audiooutput");
-          dispatch(
-            setDeviceStatus({
-              micConnected: hasMic,
-              speakerConnected: hasSpeaker,
-            }),
-          );
-        }
       } catch (e) {
         console.error("Failed to load initial data:", e);
       }
@@ -83,8 +69,8 @@ export default function Home() {
     loadSessions();
   }, [dispatch]);
 
-  // Sync transcripts to IndexedDB at most every 2s (rewriting the whole session on every token batch is O(n) each time)
   const pendingSave = useRef<Transcript[] | null>(null);
+  const isTranscriptsDirty = useRef(false);
   const currentStreamOffsetRef = useRef<number>(0);
   const flushSave = useCallback(() => {
     const pending = pendingSave.current;
@@ -96,26 +82,20 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    // Pending transcripts of a previous session must not wait for the timer
-    if (pendingSave.current?.[0]?.sessionId !== activeSession?.id) flushSave();
+    if (!isTranscriptsDirty.current) return;
+    isTranscriptsDirty.current = false;
     if (activeSession && transcripts.length > 0) {
       pendingSave.current = transcripts;
+      if (!isRecording) flushSave();
     }
-  }, [transcripts, activeSession, flushSave]);
+  }, [transcripts, activeSession, isRecording, flushSave]);
 
   useEffect(() => {
-    const timer = setInterval(flushSave, 2000);
     return () => {
-      clearInterval(timer);
       flushSave();
-    };
-  }, [flushSave]);
-
-  useEffect(() => {
-    return () => {
       keepAliveManager.stop();
     };
-  }, []);
+  }, [flushSave]);
 
   const handleNewSession = async () => {
     if (isRecording) {
@@ -126,7 +106,6 @@ export default function Home() {
       id: crypto.randomUUID(),
       createdAt: new Date(),
       title: "",
-      audioBlobPath: "",
     };
     try {
       await db.saveSession(session);
@@ -143,11 +122,9 @@ export default function Home() {
   const handleRenameSession = async (title: string) => {
     if (!activeSession) return;
     const updated = { ...activeSession, title };
+    dispatch(setActiveSession(updated));
     try {
       await db.saveSession(updated);
-      dispatch(setActiveSession(updated));
-      const list = await db.getSessions();
-      dispatch(setSessions(list));
     } catch (e) {
       console.error("Failed to rename session:", e);
     }
@@ -157,9 +134,15 @@ export default function Home() {
     await audioCaptureManager.stop();
     sonioxStreamClient.disconnect();
     await keepAliveManager.stop();
+    isTranscriptsDirty.current = true;
     dispatch(stopRecordingState());
     dispatch(commitLiveTranscripts());
-    flushSave();
+    if (pendingSave.current) {
+      pendingSave.current = pendingSave.current.map((t) =>
+        t.isFinal ? t : { ...t, isFinal: true },
+      );
+      flushSave();
+    }
   }, [dispatch, flushSave]);
 
   const startRecordingConnection = useCallback(
@@ -206,16 +189,19 @@ export default function Home() {
             );
             dispatch(setIsReconnecting(true));
           },
-          onReconnected: () => {
+          onReconnected: (bufferedDurationMs = 0) => {
             console.info(
               "[Transcribee] STT WebSocket reconnected successfully! Resuming stream with updated offset.",
             );
             dispatch(setIsReconnecting(false));
             dispatch(setStreamHealth("good"));
+            isTranscriptsDirty.current = true;
             dispatch(commitLiveTranscripts());
-            // Align newly reconnected stream tokens with total recorded audio duration
-            currentStreamOffsetRef.current =
-              audioCaptureManager.getRecordedDurationMs();
+            // Align newly reconnected stream tokens with the start of audio sent to the new socket
+            currentStreamOffsetRef.current = Math.max(
+              0,
+              audioCaptureManager.getRecordedDurationMs() - bufferedDurationMs,
+            );
           },
           onClose: async () => {
             await audioCaptureManager.stop();
@@ -249,6 +235,7 @@ export default function Home() {
               };
             });
 
+            isTranscriptsDirty.current = true;
             dispatch(updateTranscripts(mappedTokens));
           },
         },

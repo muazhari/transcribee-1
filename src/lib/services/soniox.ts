@@ -28,7 +28,7 @@ export interface SonioxCallbacks {
   onTokens: (tokens: SonioxToken[]) => void;
   onError?: (error: Event | string) => void;
   onReconnecting?: (attempt: number) => void;
-  onReconnected?: () => void;
+  onReconnected?: (bufferedDurationMs: number) => void;
 }
 
 export class SonioxStreamClient {
@@ -112,7 +112,11 @@ export class SonioxStreamClient {
 
         if (isReconnect) {
           console.info("[Soniox] Successfully reconnected STT WebSocket stream.");
-          this.callbacks?.onReconnected?.();
+          const bufferedSamples = this.audioBufferQueue.reduce(
+            (sum, chunk) => sum + chunk.length,
+            0,
+          );
+          this.callbacks?.onReconnected?.((bufferedSamples / 16000) * 1000);
         } else {
           this.callbacks?.onOpen?.();
         }
@@ -212,6 +216,14 @@ export class SonioxStreamClient {
     this.attemptConnect();
   }
 
+  updateConfig(config: SonioxConfig): void {
+    this.currentConfig = config;
+    if (!this.isIntentionallyClosed && this.ws) {
+      this.reconnectAttempts = 1;
+      this.attemptConnect();
+    }
+  }
+
   disconnect(): void {
     this.isIntentionallyClosed = true;
     if (this.reconnectTimer) {
@@ -227,17 +239,6 @@ export class SonioxStreamClient {
     this.callbacks = null;
     this.currentConfig = null;
     this.reconnectAttempts = 0;
-  }
-
-  get isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN;
-  }
-
-  get isConnecting(): boolean {
-    return (
-      this.ws?.readyState === WebSocket.CONNECTING ||
-      (!this.isIntentionallyClosed && this.reconnectAttempts > 0)
-    );
   }
 }
 
