@@ -6,7 +6,6 @@ export interface TranscriptionState {
   transcripts: Transcript[];
   savedTranscripts: Transcript[];
   finalTranscripts: Transcript[];
-  nonFinalTranscripts: Transcript[];
   currentOffset: number | null;
 }
 
@@ -15,87 +14,101 @@ const initialState: TranscriptionState = {
   transcripts: [],
   savedTranscripts: [],
   finalTranscripts: [],
-  nonFinalTranscripts: [],
   currentOffset: null,
 };
 
 const cleanText = (text: string): string => text.replace(/<end>/g, "");
 
+const finalizeAll = (transcripts: Transcript[]): Transcript[] =>
+  transcripts.map((t) => (t.isFinal ? t : { ...t, isFinal: true }));
+
 const buildSegments = (
-  finalTokens: Transcript[],
-  nonFinalTokens: Transcript[],
+  tokens: Transcript[],
+  baseIndex: number,
 ): Transcript[] => {
   const segments: Transcript[] = [];
-  const active: Record<string, Transcript> = {};
-  const lastFinalized: Record<string, Transcript> = {};
+  let current: Transcript | undefined;
+  const lastBySpeaker: Record<string, Transcript> = {};
   const pending: Record<string, string> = {};
 
-  for (const token of [...finalTokens, ...nonFinalTokens]) {
+  for (const token of tokens) {
     const speakerId = token.speakerId || "1";
     const isEnd = token.text.includes("<end>");
     const text = cleanText(token.text);
 
     if (token.translationStatus === "translation") {
       if (!text) continue;
-      const target = active[speakerId] || lastFinalized[speakerId];
+      const target = lastBySpeaker[speakerId];
       if (target) target.translation = (target.translation || "") + text;
       else pending[speakerId] = (pending[speakerId] || "") + text;
       continue;
     }
 
-    let current: Transcript | undefined = active[speakerId];
+    if (!text) {
+      if (isEnd && current) {
+        current.isFinal = token.isFinal;
+        current = undefined;
+      }
+      continue;
+    }
 
-    // A language change closes the speaker's open segment.
-    if (current && token.language !== current.language) {
-      current.isFinal = true;
-      lastFinalized[speakerId] = current;
-      delete active[speakerId];
+    // Close active segment on speaker or language change
+    if (
+      current &&
+      (current.speakerId !== speakerId ||
+        Boolean(
+          current.language &&
+            token.language &&
+            current.language !== token.language,
+        ))
+    ) {
       current = undefined;
     }
 
     if (current) {
       current.text += text;
       current.endTimestamp = Math.max(current.endTimestamp, token.endTimestamp);
-      current.duration = Math.max(0, current.endTimestamp - current.startTimestamp);
+      current.duration = Math.max(
+        0,
+        current.endTimestamp - current.startTimestamp,
+      );
       current.isFinal = token.isFinal;
-    } else if (text.trim() || !isEnd) {
+      current.language ||= token.language;
+    } else if (text.trim()) {
       current = {
         ...token,
-        id: `${token.sessionId}-${token.offsetTimestamp || 0}-${speakerId}-${token.startTimestamp}`,
+        id: `${token.sessionId}-${baseIndex + segments.length}`,
+        speakerId,
         text: text.trimStart(),
         duration: Math.max(0, token.endTimestamp - token.startTimestamp),
         translation: pending[speakerId] || undefined,
       };
       delete pending[speakerId];
-      active[speakerId] = current;
+      lastBySpeaker[speakerId] = current;
       segments.push(current);
     }
 
-    if (isEnd && current) {
-      current.isFinal = true;
-      lastFinalized[speakerId] = current;
-      delete active[speakerId];
+    if (isEnd) {
+      current = undefined;
     }
   }
 
-  return segments
-    .filter((s) => s.text.trim())
-    .map((s) => ({ ...s, translation: s.translation?.trim() || undefined }));
+  return segments.map((s) => ({
+    ...s,
+    text: s.text.trim(),
+    translation: s.translation?.trim() || undefined,
+  }));
 };
 
 const resetLive = (state: TranscriptionState) => {
   state.finalTranscripts = [];
-  state.nonFinalTranscripts = [];
   state.currentOffset = null;
 };
 
 const commitLive = (state: TranscriptionState) => {
-  state.savedTranscripts = state.transcripts.map((t) => ({
-    ...t,
-    isFinal: true,
-  }));
-  state.finalTranscripts = [];
-  state.nonFinalTranscripts = [];
+  state.transcripts = finalizeAll(state.transcripts);
+  state.savedTranscripts = state.transcripts;
+  resetLive(state);
 };
 
 export const transcriptionSlice = createSlice({
@@ -109,8 +122,9 @@ export const transcriptionSlice = createSlice({
       resetLive(state);
     },
     setTranscripts: (state, action: PayloadAction<Transcript[]>) => {
-      state.transcripts = action.payload;
-      state.savedTranscripts = action.payload;
+      const finalized = finalizeAll(action.payload);
+      state.transcripts = finalized;
+      state.savedTranscripts = finalized;
       resetLive(state);
     },
     clearTranscripts: (state) => {
@@ -121,6 +135,7 @@ export const transcriptionSlice = createSlice({
     updateTranscripts: (state, action: PayloadAction<Transcript[]>) => {
       const newTokens = action.payload;
       if (newTokens.length === 0) return;
+      if (state.sessionId && newTokens[0].sessionId !== state.sessionId) return;
 
       const tokenOffset = newTokens[0].offsetTimestamp ?? 0;
       if (state.currentOffset !== null && state.currentOffset !== tokenOffset) {
@@ -129,17 +144,17 @@ export const transcriptionSlice = createSlice({
       state.currentOffset = tokenOffset;
 
       state.finalTranscripts.push(...newTokens.filter((t) => t.isFinal));
-      state.nonFinalTranscripts = newTokens.filter((t) => !t.isFinal);
+      const nonFinal = newTokens.filter((t) => !t.isFinal);
 
       state.transcripts = [
         ...state.savedTranscripts,
-        ...buildSegments(state.finalTranscripts, state.nonFinalTranscripts),
+        ...buildSegments(
+          [...state.finalTranscripts, ...nonFinal],
+          state.savedTranscripts.length,
+        ),
       ];
     },
-    commitLiveTranscripts: (state) => {
-      commitLive(state);
-      state.currentOffset = null;
-    },
+    commitLiveTranscripts: commitLive,
   },
 });
 

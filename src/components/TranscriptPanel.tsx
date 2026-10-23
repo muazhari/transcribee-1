@@ -29,16 +29,8 @@ export default function TranscriptPanel({
   const transcripts = useAppSelector(
     (state) => state.transcription.transcripts,
   );
-  const isRecording = useAppSelector((state) => state.mediaControl.isRecording);
-  const streamHealth = useAppSelector(
-    (state) => state.mediaControl.streamHealth,
-  );
-  const isReconnecting = useAppSelector(
-    (state) => state.mediaControl.isReconnecting,
-  );
-  const keepAliveActive = useAppSelector(
-    (state) => state.mediaControl.keepAliveActive,
-  );
+  const { isRecording, streamHealth, isReconnecting, keepAliveActive } =
+    useAppSelector((state) => state.mediaControl);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [exportingAudio, setExportingAudio] = useState(false);
@@ -46,11 +38,10 @@ export default function TranscriptPanel({
   const [showScrollBottom, setShowScrollBottom] = useState(false);
 
   const scrollToBottom = () => {
-    const el = containerRef.current;
-    if (!el) return;
     isAutoScrollLocked.current = true;
     setShowScrollBottom(false);
-    el.scrollTop = el.scrollHeight;
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   };
 
   // Auto-scroll when new transcripts or tokens arrive, unless user has scrolled up
@@ -60,12 +51,29 @@ export default function TranscriptPanel({
     el.scrollTop = el.scrollHeight;
   }, [transcripts]);
 
-  // Re-pin scroll to bottom when recording starts
+  // Re-pin scroll to bottom when session changes or recording starts
   useEffect(() => {
-    if (isRecording) {
-      scrollToBottom();
-    }
+    scrollToBottom();
+  }, [activeSession?.id]);
+
+  useEffect(() => {
+    if (isRecording) scrollToBottom();
   }, [isRecording]);
+
+  if (!activeSession) {
+    return (
+      <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white justify-center items-center p-8 text-neutral-500">
+        <span className="text-4xl mb-3">🎙️</span>
+        <h3 className="font-bold text-lg text-neutral-400">
+          Ready to transcribe
+        </h3>
+        <p className="text-neutral-500 text-sm max-w-sm mt-1 text-center">
+          Select an existing session from the session panel or click &quot;New
+          Session&quot; to start recording and transcribing in real-time.
+        </p>
+      </div>
+    );
+  }
 
   const handleScroll = () => {
     const el = containerRef.current;
@@ -76,22 +84,19 @@ export default function TranscriptPanel({
     setShowScrollBottom(!isAtBottom && transcripts.length > 0);
   };
 
-  const handleTranscriptClick = (startTimestamp: number, endTimestamp: number) => {
-    if (activeSession) {
-      AudioCaptureManager.playTokenAudio(
-        activeSession.id,
-        startTimestamp,
-        endTimestamp,
-      );
-    }
-  };
+  const handleTranscriptClick = (startTimestamp: number, endTimestamp: number) =>
+    AudioCaptureManager.playTokenAudio(
+      activeSession.id,
+      startTimestamp,
+      endTimestamp,
+    );
 
-  const baseFilename = (
-    activeSession?.title ||
-    `Session - ${new Date(activeSession?.createdAt ?? 0).toLocaleString()}`
-  )
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-");
+  const defaultTitle = `Session - ${new Date(activeSession.createdAt).toLocaleString()}`;
+  const baseFilename =
+    (activeSession.title || defaultTitle)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "session";
 
   const handleExportSrt = () =>
     downloadFile(
@@ -108,7 +113,6 @@ export default function TranscriptPanel({
     );
 
   const handleExportAudio = async () => {
-    if (!activeSession) return;
     setExportingAudio(true);
     try {
       const url = await AudioCaptureManager.getSessionAudioWavUrl(
@@ -131,21 +135,6 @@ export default function TranscriptPanel({
     }
   };
 
-  if (!activeSession) {
-    return (
-      <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white justify-center items-center p-8 text-neutral-500">
-        <span className="text-4xl mb-3">🎙️</span>
-        <h3 className="font-bold text-lg text-neutral-400">
-          Ready to transcribe
-        </h3>
-        <p className="text-neutral-500 text-sm max-w-sm mt-1 text-center">
-          Select an existing session from the session panel or click &quot;New
-          Session&quot; to start recording and transcribing in real-time.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 min-h-0 flex flex-col bg-neutral-900 text-white min-w-0 overflow-hidden">
       {/* Session Title Header */}
@@ -154,25 +143,35 @@ export default function TranscriptPanel({
           type="text"
           value={activeSession.title || ""}
           onChange={(e) => onRenameSession(e.target.value)}
-          placeholder={`Session - ${new Date(
-            activeSession.createdAt,
-          ).toLocaleString()}`}
+          placeholder={defaultTitle}
           className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 min-w-0 flex-1 text-white placeholder-neutral-500 transition-colors truncate"
         />
-        {isRecording && isReconnecting && (
-          <Badge variant="yellow" pulsing>
-            Reconnecting...
-          </Badge>
-        )}
-        {isRecording && !isReconnecting && (
-          <Badge variant={streamHealth === "good" ? "green" : "red"} pulsing>
-            Health: {streamHealth.toUpperCase()}
-          </Badge>
-        )}
-        {isRecording && keepAliveActive && (
-          <Badge variant="violet" className="hidden sm:flex" title="Background and sleep resilience active">
-            🛡️ Background Active
-          </Badge>
+        {isRecording && (
+          <>
+            <Badge
+              variant={
+                isReconnecting
+                  ? "yellow"
+                  : streamHealth === "good"
+                    ? "green"
+                    : "red"
+              }
+              pulsing
+            >
+              {isReconnecting
+                ? "Reconnecting..."
+                : `Health: ${streamHealth.toUpperCase()}`}
+            </Badge>
+            {keepAliveActive && (
+              <Badge
+                variant="violet"
+                className="hidden sm:flex"
+                title="Background and sleep resilience active"
+              >
+                🛡️ Background Active
+              </Badge>
+            )}
+          </>
         )}
         <ExportDropdown
           onExportAudio={handleExportAudio}
@@ -210,7 +209,7 @@ export default function TranscriptPanel({
         </div>
 
         {/* Floating jump to latest button */}
-        {showScrollBottom && (
+        {showScrollBottom && transcripts.length > 0 && (
           <button
             onClick={scrollToBottom}
             className="absolute bottom-4 right-6 bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-lg shadow-violet-950/40 flex items-center gap-1.5 transition-all z-10 cursor-pointer"
