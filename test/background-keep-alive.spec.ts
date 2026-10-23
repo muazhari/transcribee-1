@@ -178,7 +178,7 @@ test.beforeEach(async ({ page }) => {
 test("Background & Sleep Keep-Alive: Screen Wake Lock, MediaSession, and Audio Keep-Alive activate on recording", async ({
   page,
 }) => {
-  await page.goto("http://localhost:3000");
+  await page.goto("/");
 
   // Open settings drawer and supply Soniox API key
   await page.locator("button[title='Open Settings']").click();
@@ -225,7 +225,7 @@ test("Background & Sleep Keep-Alive: Screen Wake Lock, MediaSession, and Audio K
   expect(mediaSessionTitle).toContain("Transcribing Live");
 
   // Verify transcript word is rendered
-  await expect(page.locator("text=Background")).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText("Background", { exact: true })).toBeVisible({ timeout: 5000 });
 
   // Simulate tab visibility change to hidden (backgrounded / minimized)
   await page.evaluate(() => {
@@ -264,7 +264,7 @@ test("Background & Sleep Keep-Alive: Screen Wake Lock, MediaSession, and Audio K
 test("Sleep Wake recovery: resumes AudioContext and maintains stream integrity", async ({
   page,
 }) => {
-  await page.goto("http://localhost:3000");
+  await page.goto("/");
 
   // Open settings and supply key
   await page.locator("button[title='Open Settings']").click();
@@ -279,7 +279,7 @@ test("Sleep Wake recovery: resumes AudioContext and maintains stream integrity",
   await expect(page.locator("button:has-text('Stop Recording')")).toBeVisible();
 
   // Wait for initial token
-  await expect(page.locator("text=Background")).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText("Background", { exact: true })).toBeVisible({ timeout: 5000 });
 
   // Simulate device suspending AudioContext during sleep and then waking up
   await page.evaluate(() => {
@@ -307,7 +307,7 @@ test("Sleep Wake recovery: resumes AudioContext and maintains stream integrity",
 test("Unexpected STT WebSocket disconnection automatically reconnects with UI state updates", async ({
   page,
 }) => {
-  await page.goto("http://localhost:3000");
+  await page.goto("/");
 
   // Open settings drawer and supply Soniox API key
   await page.locator("button[title='Open Settings']").click();
@@ -322,7 +322,7 @@ test("Unexpected STT WebSocket disconnection automatically reconnects with UI st
   await expect(page.locator("button:has-text('Stop Recording')")).toBeVisible();
 
   // Verify initial transcription arrived
-  await expect(page.locator("text=Background")).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText("Background", { exact: true })).toBeVisible({ timeout: 5000 });
   await expect(page.locator("text=Health: GOOD")).toBeVisible();
 
   // Trigger unexpected drop on the active WebSocket
@@ -350,7 +350,7 @@ test("Unexpected STT WebSocket disconnection automatically reconnects with UI st
 test("VisibilityChange to hidden triggers immediate IndexedDB save flush without waiting for regular interval", async ({
   page,
 }) => {
-  await page.goto("http://localhost:3000");
+  await page.goto("/");
 
   // Open settings and supply key
   await page.locator("button[title='Open Settings']").click();

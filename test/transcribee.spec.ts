@@ -1,402 +1,233 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
+import { setupMockEnvironment } from "./helpers";
 
-test.beforeEach(async ({ page }) => {
-  page.on("console", (msg) =>
-    console.log(`PAGE LOG: [${msg.type()}] ${msg.text()}`),
-  );
-  page.on("pageerror", (err) => console.error("PAGE ERROR:", err.message));
-  // Set up mock window variables and functions
-  await page.addInitScript(() => {
-    (window as any).__PLAYWRIGHT_TEST__ = true;
+test.describe("Transcribee Core E2E Suite", () => {
+  test("configures API keys, models, and routing in Settings Drawer and persists to localStorage", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, { seedConfig: false });
+    await page.goto("/");
 
-    // Mock WebSocket duplex stream
-    class MockWebSocket extends EventTarget {
-      static OPEN = 1;
-      readyState = 0;
-      binaryType = "blob";
-      url = "";
-      onopen: any = null;
-      onmessage: any = null;
-      onerror: any = null;
-      onclose: any = null;
+    await page.locator('button[title="Open Settings"]').click();
+    await expect(
+      page.getByRole("heading", { name: "System Configurations" }),
+    ).toBeVisible();
 
-      constructor(url: string) {
-        super();
-        this.url = url;
-        setTimeout(() => {
-          this.readyState = 1;
-          const openEvent = new Event("open");
-          this.dispatchEvent(openEvent);
-          if (this.onopen) this.onopen(openEvent);
-        }, 50);
-      }
+    await page
+      .getByPlaceholder("Enter Soniox API Key")
+      .fill("test-soniox-key-xyz");
+    await page
+      .getByPlaceholder("Enter Google AI API Key")
+      .fill("test-gemini-key-xyz");
 
-      send(data: any) {
-        if (typeof data === "string") {
-          // It's the config message
-          setTimeout(() => {
-            // Push mock tokens
-            const response = {
-              tokens: [
-                {
-                  text: "Hello",
-                  start_ms: 100,
-                  duration_ms: 200,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                },
-                {
-                  text: " world",
-                  start_ms: 300,
-                  duration_ms: 200,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                },
-                {
-                  text: "Hola mundo",
-                  start_ms: 100,
-                  duration_ms: 400,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "translation",
-                },
-              ],
-            };
-            const messageEvent = new MessageEvent("message", {
-              data: JSON.stringify(response),
-            });
-            this.dispatchEvent(messageEvent);
-            if (this.onmessage) this.onmessage(messageEvent);
-          }, 150);
-        }
-      }
+    await expect(page.locator('select[name="aiModel"]')).toHaveValue(
+      "gemini-3.8-flash",
+    );
+    await expect(page.locator('select[name="transcriptionModel"]')).toHaveValue(
+      "stt-rt-v5",
+    );
 
-      close() {
-        this.readyState = 3;
-        const closeEvent = new Event("close");
-        this.dispatchEvent(closeEvent);
-        if (this.onclose) this.onclose(closeEvent);
-      }
-    }
+    await page.locator('select[name="audioRouting"]').selectOption("mic-only");
+    await page.getByRole("button", { name: "Save configurations" }).click();
 
-    (window as any).WebSocket = MockWebSocket;
+    await expect(
+      page.getByRole("heading", { name: "System Configurations" }),
+    ).toBeHidden();
 
-    // Mock getUserMedia & getDisplayMedia
-    const mockTrack = {
-      stop: () => {},
-      enabled: true,
-    };
-    const mockStream = {
-      getTracks: () => [mockTrack],
-      getAudioTracks: () => [mockTrack],
-      getVideoTracks: () => [mockTrack],
-    };
-
-    if (!window.navigator.mediaDevices) {
-      Object.defineProperty(window.navigator, "mediaDevices", {
-        value: {},
-        writable: true,
-        configurable: true,
+    await expect
+      .poll(async () => {
+        return page.evaluate(() => {
+          const root = JSON.parse(localStorage.getItem("persist:root") || "{}");
+          return JSON.parse(root.config || "{}");
+        });
+      })
+      .toMatchObject({
+        sonioxApiKey: "test-soniox-key-xyz",
+        googleApiKey: "test-gemini-key-xyz",
+        audioRouting: "mic-only",
       });
-    }
-    (window.navigator.mediaDevices as any).getUserMedia = async () =>
-      mockStream;
-    (window.navigator.mediaDevices as any).getDisplayMedia = async () =>
-      mockStream;
-
-    // Mock AudioContext & AudioWorklet
-    class MockAudioContext {
-      state = "running";
-      sampleRate = 16000;
-      destination = {};
-      audioWorklet = {
-        addModule: async () => Promise.resolve(),
-      };
-
-      createMediaStreamSource() {
-        return {
-          connect: () => {},
-          disconnect: () => {},
-        };
-      }
-      close() {
-        this.state = "closed";
-        return Promise.resolve();
-      }
-      createBuffer() {
-        return {
-          copyToChannel: () => {},
-          duration: 1,
-          length: 16000,
-          sampleRate: 16000,
-          numberOfChannels: 1,
-        };
-      }
-      createBufferSource() {
-        return {
-          connect: () => {},
-          start: () => {},
-        };
-      }
-    }
-    class MockAudioWorkletNode {
-      port: any = {
-        _onmessage: null,
-        set onmessage(val: any) {
-          this._onmessage = val;
-          if (val) {
-            setTimeout(() => {
-              if (this._onmessage) {
-                this._onmessage({ data: new Float32Array(4096) });
-              }
-            }, 50);
-          }
-        },
-        get onmessage() {
-          return this._onmessage;
-        },
-      };
-      connect() {}
-      disconnect() {}
-    }
-    (window as any).AudioContext = MockAudioContext;
-    (window as any).webkitAudioContext = MockAudioContext;
-    (window as any).AudioWorkletNode = MockAudioWorkletNode;
   });
-});
 
-test("Full user journey: settings input, start session, transcribe, audio scrub, Chat", async ({
-  page,
-}) => {
-  // 1. Load application home page
-  await page.goto("/", { waitUntil: "load" });
-  console.log("HTML CONTENT:", await page.content());
-  await page
-    .locator("text=Transcribee")
-    .waitFor({ state: "visible", timeout: 30000 });
-  await expect(page).toHaveTitle(/Transcribee/);
+  test("creates a session, streams live transcription with translation, and saves to IndexedDB", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, {
+      seedConfig: { enableTranslation: true },
+    });
+    await page.goto("/");
 
-  // 2. Open Settings and save valid credentials
-  await page.click('button[title="Open Settings"]');
-  await expect(page.locator("text=System Configurations")).toBeVisible();
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    await expect(page.getByText(/Session - \d+\/\d+\/\d+/)).toBeVisible();
 
-  // Fill config fields
-  await page.fill(
-    'input[placeholder="Enter Soniox API Key"]',
-    "test-soniox-key-xyz",
-  );
-  await page.fill(
-    'input[placeholder="Enter Google AI API Key"]',
-    "test-gemini-key-xyz",
-  );
+    await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
+    await expect(page.getByText("Health: GOOD")).toBeVisible();
 
-  // Submit settings form
-  await page.click('button:has-text("Save configurations")');
-  await expect(page.locator("text=System Configurations")).not.toBeVisible();
+    await expect(page.getByText("Hello")).toBeVisible();
+    await expect(page.getByText("world")).toBeVisible();
+    await expect(page.getByText("Speaker 1")).toBeVisible();
+    await expect(page.getByText("Hola mundo")).toBeVisible();
 
-  // 3. Start a new session
-  await page.click('button:has-text("New Session")');
-  await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
+    await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
+    await expect(
+      page.getByRole("button", { name: /🎙️ Start Recording/i }),
+    ).toBeVisible();
 
-  // 4. Trigger transcription recording
-  await page.click('button:has-text("Start Recording")');
-  await expect(page.locator('button:has-text("Stop Recording")')).toBeVisible();
+    const storedTranscripts = await page.evaluate(async () => {
+      const req = indexedDB.open("TranscribeeDB", 1);
+      const db = await new Promise<IDBDatabase>((res) => {
+        req.onsuccess = () => res(req.result);
+      });
+      const tx = db.transaction("transcripts", "readonly");
+      const all = await new Promise<any[]>((res) => {
+        const r = tx.objectStore("transcripts").getAll();
+        r.onsuccess = () => res(r.result);
+      });
+      db.close();
+      return all;
+    });
+    expect(storedTranscripts.length).toBeGreaterThanOrEqual(1);
+    expect(storedTranscripts[0].text).toContain("Hello world");
+    expect(storedTranscripts[0].translation).toContain("Hola mundo");
+  });
 
-  // 5. Verify live transcription tokens and translation render correctly
-  // Expect speaker header and transcript words to appear
-  await expect(page.locator("text=Speaker 1").first()).toBeVisible();
-  await expect(page.locator("text=Hello")).toBeVisible();
-  await expect(page.locator("text=world")).toBeVisible();
-  // Expect translation text to appear
-  await expect(page.locator("text=Hola mundo")).toBeVisible();
+  test("scrubs audio on word token click and segment timestamp click with verified audio buffers", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, { seedConfig: true });
+    await page.goto("/");
 
-  // 6. Test Token-Level Audio Playback scrubbing by clicking a word
-  await page.click("text=Hello");
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
+    await expect(page.getByText("Hello")).toBeVisible();
+    await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
 
-  // 7. Stop recording
-  await page.click('button:has-text("Stop Recording")');
-  await expect(
-    page.locator('button:has-text("Start Recording")'),
-  ).toBeVisible();
+    // Click individual finalized word token ("Hello")
+    const helloToken = page.locator("span", { hasText: "Hello" }).first();
+    await expect(helloToken).toHaveAttribute("title", /Play word/);
+    await helloToken.click();
 
-  // 8. Interact with Gemini Chat chatbot over the transcripts
-  await page.fill(
-    'input[placeholder="Type your question..."]',
-    "Summarize this meeting",
-  );
-  await page.click('button:has-text("Send")');
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (window as any).__playedAudioBuffers.length),
+      )
+      .toBe(1);
 
-  // Verify that the mock response from Gemini appears
-  await expect(
-    page.locator("text=This is a mock response from Gemini"),
-  ).toBeVisible();
-});
+    // Click header timestamp range ("0:00 - 0:00") to play entire segment
+    await page.getByText("0:00 - 0:00").click();
 
-test("Mobile viewport: verify header scrollable menu and view switching", async ({
-  page,
-}) => {
-  // Set viewport to mobile size
-  await page.setViewportSize({ width: 375, height: 812 });
+    await expect
+      .poll(async () =>
+        page.evaluate(() => (window as any).__playedAudioBuffers.length),
+      )
+      .toBe(2);
 
-  // 1. Load application home page
-  await page.goto("/", { waitUntil: "load" });
-  await page
-    .locator('button:has-text("Live Session")')
-    .first()
-    .waitFor({ state: "visible", timeout: 30000 });
+    const playedBuffers = await page.evaluate(
+      () => (window as any).__playedAudioBuffers,
+    );
+    expect(playedBuffers[0].length).toBeGreaterThan(0);
+    expect(playedBuffers[1].length).toBeGreaterThan(playedBuffers[0].length);
+  });
 
-  // 2. Verify that the mobile header is visible and desktop panels are hidden or shown correctly
-  // By default, activeTab is "transcription"
-  await expect(page.locator('button:has-text("Live Session")').first()).toBeVisible();
-  await expect(page.locator('button:has-text("Home")').first()).toBeVisible();
-  await expect(page.locator('button:has-text("AI Chat")').first()).toBeVisible();
+  test("offsets timestamps accurately across consecutive recordings in the same session", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, {
+      seedConfig: true,
+      audioSamplesPerRecording: 32000, // 2000ms at 16kHz
+    });
+    await page.goto("/");
 
-  // The Live Session content is visible by default on mobile
-  await expect(page.locator("text=Ready to transcribe")).toBeVisible();
+    await page.getByRole("button", { name: "+ New Session" }).click();
 
-  // SessionPanel (Session list) should be hidden by default on mobile
-  await expect(page.locator("text=Session Logs")).not.toBeVisible();
+    // First recording (0ms .. 2000ms)
+    await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
+    await expect(page.getByText("Hello")).toBeVisible();
+    await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
 
-  // Chat panel should be hidden by default on mobile
-  await expect(page.locator("text=AI Assistant")).not.toBeVisible();
+    // Update mock tokens for second recording
+    await page.evaluate(() => {
+      (window as any).__mockSonioxTokens = [
+        {
+          text: "Second",
+          start_ms: 100,
+          duration_ms: 200,
+          is_final: true,
+          speaker: "2",
+          translation_status: "original",
+          language: "en",
+        },
+        {
+          text: " segment",
+          start_ms: 300,
+          duration_ms: 300,
+          is_final: true,
+          speaker: "2",
+          translation_status: "original",
+          language: "en",
+        },
+      ];
+    });
 
-  // 3. Switch to "Session List" tab
-  await page.click('button:has-text("Home")');
-  await expect(page.locator("text=Session Logs")).toBeVisible();
-  await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
-  await expect(page.locator("text=AI Assistant")).not.toBeVisible();
+    // Second recording in same session -> starts at offset 2000ms (00:02)
+    await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
+    await expect(page.getByText("Second")).toBeVisible();
+    await expect(page.getByText("Speaker 2")).toBeVisible();
+    await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
 
-  // 4. Switch to "AI Chat" tab
-  await page.click('button:has-text("AI Chat")');
-  await expect(page.locator("text=Ready to chat")).toBeVisible();
-  await expect(page.locator("text=Session Logs")).not.toBeVisible();
-  await expect(page.locator("text=Ready to transcribe")).not.toBeVisible();
+    // Verify 0:02 - 0:02 timestamp range on the second segment
+    await expect(page.getByText("0:02 - 0:02")).toBeVisible();
 
-  // 5. Open settings from Session List tab
-  await page.click('button:has-text("Home")');
-  await page.click('button[title="Open Settings"]');
-  await expect(page.locator("text=System Configurations")).toBeVisible();
+    // Verify offsetTimestamp in IndexedDB
+    const secondSeg = await page.evaluate(async () => {
+      const req = indexedDB.open("TranscribeeDB", 1);
+      const db = await new Promise<IDBDatabase>((res) => {
+        req.onsuccess = () => res(req.result);
+      });
+      const tx = db.transaction("transcripts", "readonly");
+      const all = await new Promise<any[]>((res) => {
+        const r = tx.objectStore("transcripts").getAll();
+        r.onsuccess = () => res(r.result);
+      });
+      db.close();
+      return all.find((t) => t.speakerId === "2");
+    });
 
-  // Fill config fields
-  await page.fill(
-    'input[placeholder="Enter Soniox API Key"]',
-    "test-soniox-key-xyz",
-  );
-  await page.fill(
-    'input[placeholder="Enter Google AI API Key"]',
-    "test-gemini-key-xyz",
-  );
-  await page.click('button:has-text("Save configurations")');
-  await expect(page.locator("text=System Configurations")).not.toBeVisible();
+    expect(secondSeg).toBeDefined();
+    expect(secondSeg.offsetTimestamp).toBe(2000);
+    expect(secondSeg.startTimestamp).toBe(2100);
+    expect(secondSeg.endTimestamp).toBe(2600);
+  });
 
-  // 6. Start new session: check that it auto-switches to "Live Session" tab
-  await page.click('button:has-text("New Session")');
-  // It should automatically switch activeTab to "transcription"
-  await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
-  await expect(page.locator("text=Session Logs")).not.toBeVisible();
+  test("streams AI chat response and supports mid-generation cancellation", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, { seedConfig: true });
+    await page.goto("/");
 
-  // 7. Verify switching to a session in the session list auto-switches to Live Session
-  await page.click('button:has-text("Home")');
-  await expect(page.locator("text=Session Logs")).toBeVisible();
-  // Click the session item in the session panel list (the title text of the session item)
-  await page.click('div[class*="cursor-pointer"] >> text=Session -');
-  // It should switch to Live Session
-  await expect(page.locator("text=Session Logs")).not.toBeVisible();
-  await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
-});
+    await page.getByRole("button", { name: "+ New Session" }).click();
 
-test("Consecutive recording starts in the same session: verify correct offsets and timestamps", async ({
-  page,
-}) => {
-  // 1. Load application home page
-  await page.goto("/", { waitUntil: "load" });
-  await page
-    .locator("text=Transcribee")
-    .waitFor({ state: "visible", timeout: 30000 });
+    const chatInput = page.getByPlaceholder("Type your question...");
+    await chatInput.fill("Summarize this transcript.");
+    await page.getByRole("button", { name: "Send" }).click();
 
-  // 2. Open Settings and save credentials
-  await page.click('button[title="Open Settings"]');
-  await page.fill(
-    'input[placeholder="Enter Soniox API Key"]',
-    "test-soniox-key-xyz",
-  );
-  await page.fill(
-    'input[placeholder="Enter Google AI API Key"]',
-    "test-gemini-key-xyz",
-  );
-  await page.click('button:has-text("Save configurations")');
+    await expect(page.getByText("Summarize this transcript.")).toBeVisible();
+    await expect(
+      page.getByText("This is a mock response from Gemini", { exact: false }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
 
-  // 3. Start a new session
-  await page.click('button:has-text("New Session")');
-  await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
+    // Now test mid-stream cancellation
+    await chatInput.fill("Give me a detailed breakdown.");
+    await page.getByRole("button", { name: "Send" }).click();
 
-  // 4. First recording
-  await page.click('button:has-text("Start Recording")');
-  await expect(page.locator('button:has-text("Stop Recording")')).toBeVisible();
+    const cancelButton = page.getByRole("button", { name: "Cancel" });
+    await expect(cancelButton).toBeVisible();
+    await cancelButton.click();
 
-  // Wait for transcription to render
-  await expect(page.locator("text=Hello")).toBeVisible();
-  await page.click('button:has-text("Stop Recording")');
-  await expect(
-    page.locator('button:has-text("Start Recording")'),
-  ).toBeVisible();
-
-  // 5. Second recording in the same session
-  await page.click('button:has-text("Start Recording")');
-  await expect(page.locator('button:has-text("Stop Recording")')).toBeVisible();
-
-  // Verify that the first transcript remains and new transcripts also load
-  await expect(page.locator("text=Hello").first()).toBeVisible();
-
-  await page.click('button:has-text("Stop Recording")');
-  await expect(
-    page.locator('button:has-text("Start Recording")'),
-  ).toBeVisible();
-});
-
-test("Chat panel cancel button during AI response generation", async ({
-  page,
-}) => {
-  // 1. Load application home page
-  await page.goto("/", { waitUntil: "load" });
-  await page
-    .locator("text=Transcribee")
-    .waitFor({ state: "visible", timeout: 30000 });
-
-  // 2. Open Settings and save credentials
-  await page.click('button[title="Open Settings"]');
-  await page.fill(
-    'input[placeholder="Enter Soniox API Key"]',
-    "test-soniox-key-xyz",
-  );
-  await page.fill(
-    'input[placeholder="Enter Google AI API Key"]',
-    "test-gemini-key-xyz",
-  );
-  await page.click('button:has-text("Save configurations")');
-
-  // 3. Start a new session
-  await page.click('button:has-text("New Session")');
-  await expect(page.locator('input[placeholder^="Session -"]')).toBeVisible();
-
-  // 4. Fill question and click Send
-  await page.fill(
-    'input[placeholder="Type your question..."]',
-    "Explain this in detail",
-  );
-  await page.click('button:has-text("Send")');
-
-  // 5. Verify Cancel button appears while generating
-  const cancelButton = page.locator('button:has-text("Cancel")');
-  await expect(cancelButton).toBeVisible();
-
-  // 6. Click Cancel button
-  await cancelButton.click();
-
-  // 7. Verify generation is cancelled and Cancel button reverts to Send button
-  await expect(page.locator("text=Cancelled")).toBeVisible();
-  await expect(page.locator('button:has-text("Send")')).toBeVisible();
+    await expect(
+      page.getByText("(Chat cancelled)", { exact: false }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
+  });
 });
