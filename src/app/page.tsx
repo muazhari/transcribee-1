@@ -18,10 +18,13 @@ import {
   stopRecordingState,
   setDeviceStatus,
   setStreamHealth,
+  setIsReconnecting,
+  setKeepAliveActive,
 } from "../lib/store/slices/mediaControlSlice";
 import { clearChatHistory } from "../lib/store/slices/chatContextSlice";
 import { audioCaptureManager } from "../lib/services/audioCapture";
 import { sonioxStreamClient } from "../lib/services/soniox";
+import { keepAliveManager } from "../lib/services/keepAlive";
 
 import SessionPanel from "../components/SessionPanel";
 import SettingsDrawer from "../components/SettingsDrawer";
@@ -82,6 +85,7 @@ export default function Home() {
 
   // Sync transcripts to IndexedDB at most every 2s (rewriting the whole session on every token batch is O(n) each time)
   const pendingSave = useRef<Transcript[] | null>(null);
+  const currentStreamOffsetRef = useRef<number>(0);
   const flushSave = useCallback(() => {
     const pending = pendingSave.current;
     if (!pending) return;
@@ -106,6 +110,12 @@ export default function Home() {
       flushSave();
     };
   }, [flushSave]);
+
+  useEffect(() => {
+    return () => {
+      keepAliveManager.stop();
+    };
+  }, []);
 
   const handleNewSession = async () => {
     if (isRecording) {
@@ -143,78 +153,109 @@ export default function Home() {
     }
   };
 
-  const startRecordingConnection = useCallback((offsetTimestamp: number) => {
-    if (!activeSession) return;
-
-    // Connect to Soniox STT WebSocket
-    sonioxStreamClient.connect(
-      {
-        ...config,
-        apiKey: config.sonioxApiKey,
-        model: config.transcriptionModel,
-      },
-      {
-        // Start capture only once the socket is open so no audio is saved without also being sent
-        onOpen: () => {
-          dispatch(startRecordingState());
-          audioCaptureManager
-            .start(
-              activeSession.id,
-              config.audioRouting,
-              (pcmData) => sonioxStreamClient.sendAudio(pcmData),
-              offsetTimestamp,
-            )
-            .catch((err: unknown) => {
-              console.error("Audio recording setup failed:", err);
-              const errMsg = err instanceof Error ? err.message : String(err);
-              alert(`Could not start recording: ${errMsg}`);
-              sonioxStreamClient.disconnect();
-              dispatch(stopRecordingState());
-            });
-        },
-        onClose: async () => {
-          await audioCaptureManager.stop();
-          dispatch(stopRecordingState());
-        },
-        onError: (error) => {
-          dispatch(setStreamHealth("poor"));
-          if (typeof error === "string") alert(`Soniox error: ${error}`);
-        },
-        onTokens: (tokens) => {
-          const mappedTokens = tokens.map((t) => {
-            const start = t.start_ms ?? 0;
-            const end =
-              t.end_ms ??
-              (t.duration_ms !== undefined ? start + t.duration_ms : start);
-
-            return {
-              id: crypto.randomUUID(),
-              sessionId: activeSession.id,
-              text: t.text,
-              speakerId: t.speaker,
-              startTimestamp: start + offsetTimestamp,
-              endTimestamp: end + offsetTimestamp,
-              duration: end - start,
-              isFinal: t.is_final,
-              translationStatus: t.translation_status,
-              language: t.language,
-              offsetTimestamp,
-            };
-          });
-
-          dispatch(updateTranscripts(mappedTokens));
-        },
-      },
-    );
-  }, [activeSession, config, dispatch]);
-
   const stopRecording = useCallback(async () => {
     await audioCaptureManager.stop();
     sonioxStreamClient.disconnect();
+    await keepAliveManager.stop();
     dispatch(stopRecordingState());
     dispatch(commitLiveTranscripts());
     flushSave();
   }, [dispatch, flushSave]);
+
+  const startRecordingConnection = useCallback(
+    (offsetTimestamp: number) => {
+      if (!activeSession) return;
+
+      currentStreamOffsetRef.current = offsetTimestamp;
+
+      // Connect to Soniox STT WebSocket
+      sonioxStreamClient.connect(
+        {
+          ...config,
+          apiKey: config.sonioxApiKey,
+          model: config.transcriptionModel,
+        },
+        {
+          // Start capture only once the socket is open so no audio is saved without also being sent
+          onOpen: () => {
+            dispatch(startRecordingState());
+            dispatch(setIsReconnecting(false));
+
+            if (!audioCaptureManager.isRunning) {
+              audioCaptureManager
+                .start(
+                  activeSession.id,
+                  config.audioRouting,
+                  (pcmData) => sonioxStreamClient.sendAudio(pcmData),
+                  offsetTimestamp,
+                )
+                .catch((err: unknown) => {
+                  console.error("Audio recording setup failed:", err);
+                  const errMsg =
+                    err instanceof Error ? err.message : String(err);
+                  alert(`Could not start recording: ${errMsg}`);
+                  sonioxStreamClient.disconnect();
+                  keepAliveManager.stop();
+                  dispatch(stopRecordingState());
+                });
+            }
+          },
+          onReconnecting: (attempt) => {
+            console.warn(
+              `[Transcribee] Background STT reconnecting attempt #${attempt}...`,
+            );
+            dispatch(setIsReconnecting(true));
+          },
+          onReconnected: () => {
+            console.info(
+              "[Transcribee] STT WebSocket reconnected successfully! Resuming stream with updated offset.",
+            );
+            dispatch(setIsReconnecting(false));
+            dispatch(setStreamHealth("good"));
+            dispatch(commitLiveTranscripts());
+            // Align newly reconnected stream tokens with total recorded audio duration
+            currentStreamOffsetRef.current =
+              audioCaptureManager.getRecordedDurationMs();
+          },
+          onClose: async () => {
+            await audioCaptureManager.stop();
+            await keepAliveManager.stop();
+            dispatch(stopRecordingState());
+          },
+          onError: (error) => {
+            dispatch(setStreamHealth("poor"));
+            if (typeof error === "string") console.warn(`Soniox error: ${error}`);
+          },
+          onTokens: (tokens) => {
+            const streamOffset = currentStreamOffsetRef.current;
+            const mappedTokens = tokens.map((t) => {
+              const start = t.start_ms ?? 0;
+              const end =
+                t.end_ms ??
+                (t.duration_ms !== undefined ? start + t.duration_ms : start);
+
+              return {
+                id: crypto.randomUUID(),
+                sessionId: activeSession.id,
+                text: t.text,
+                speakerId: t.speaker,
+                startTimestamp: start + streamOffset,
+                endTimestamp: end + streamOffset,
+                duration: end - start,
+                isFinal: t.is_final,
+                translationStatus: t.translation_status,
+                language: t.language,
+                offsetTimestamp: streamOffset,
+              };
+            });
+
+            dispatch(updateTranscripts(mappedTokens));
+          },
+        },
+      );
+    },
+    [activeSession, config, dispatch],
+  );
 
   const startRecording = useCallback(async () => {
     if (!activeSession) {
@@ -236,6 +277,36 @@ export default function Home() {
         offsetTimestamp = lastChunk.startTimestamp + lastChunkDurationMs;
       }
 
+      // Initialize background resilience & keep-awake features
+      await keepAliveManager.start({
+        enableWakeLock: config.enableKeepAwake,
+        onHeartbeat: () => {
+          // Non-throttled heartbeat tick from Web Worker background thread
+          flushSave();
+        },
+        onSleepWake: (suspendedDurationMs) => {
+          console.info(
+            `[Transcribee] Resumed from sleep/standby (suspended for ${suspendedDurationMs}ms). Recovering streams...`,
+          );
+          audioCaptureManager.resumeIfSuspended();
+          sonioxStreamClient.reconnectNow();
+          flushSave();
+        },
+        onStopRequested: () => {
+          stopRecording();
+        },
+        onSaveRequested: () => {
+          flushSave();
+        },
+        onAudioContextResumeRequested: () => {
+          audioCaptureManager.resumeIfSuspended();
+        },
+        onNetworkRestored: () => {
+          sonioxStreamClient.reconnectNow();
+        },
+      });
+      dispatch(setKeepAliveActive(true));
+
       startRecordingConnection(offsetTimestamp);
     } catch (err: unknown) {
       console.error("Audio recording setup failed:", err);
@@ -243,7 +314,7 @@ export default function Home() {
       alert(`Could not start recording: ${errMsg}`);
       await stopRecording();
     }
-  }, [activeSession, config, startRecordingConnection, stopRecording]);
+  }, [activeSession, config, startRecordingConnection, stopRecording, flushSave, dispatch]);
 
   return (
     <main className="h-dvh w-full flex flex-col bg-neutral-900 font-sans overflow-hidden">

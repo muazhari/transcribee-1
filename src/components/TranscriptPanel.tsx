@@ -33,6 +33,12 @@ export default function TranscriptPanel({
   const streamHealth = useAppSelector(
     (state) => state.mediaControl.streamHealth,
   );
+  const isReconnecting = useAppSelector(
+    (state) => state.mediaControl.isReconnecting,
+  );
+  const keepAliveActive = useAppSelector(
+    (state) => state.mediaControl.keepAliveActive,
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [exportingAudio, setExportingAudio] = useState(false);
@@ -153,9 +159,19 @@ export default function TranscriptPanel({
           ).toLocaleString()}`}
           className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 min-w-0 flex-1 text-white placeholder-neutral-500 transition-colors truncate"
         />
-        {isRecording && (
+        {isRecording && isReconnecting && (
+          <Badge variant="yellow" pulsing>
+            Reconnecting...
+          </Badge>
+        )}
+        {isRecording && !isReconnecting && (
           <Badge variant={streamHealth === "good" ? "green" : "red"} pulsing>
             Health: {streamHealth.toUpperCase()}
+          </Badge>
+        )}
+        {isRecording && keepAliveActive && (
+          <Badge variant="violet" className="hidden sm:flex" title="Background and sleep resilience active">
+            🛡️ Background Active
           </Badge>
         )}
         <ExportDropdown

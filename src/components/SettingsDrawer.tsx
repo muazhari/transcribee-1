@@ -31,6 +31,7 @@ const settingsFormSchema = z.object({
   translationLanguageA: z.string(),
   translationLanguageB: z.string(),
   audioRouting: z.enum(["mix", "mic-only", "speaker-only"]),
+  enableKeepAwake: z.boolean(),
 });
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
@@ -228,6 +229,11 @@ export default function SettingsDrawer({
             <Checkbox
               label="Language Identification"
               {...register("enableLanguageIdentification")}
+            />
+
+            <Checkbox
+              label="Keep Awake & Background Resilience"
+              {...register("enableKeepAwake")}
             />
           </div>
 

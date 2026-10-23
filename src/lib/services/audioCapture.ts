@@ -21,6 +21,26 @@ export class AudioCaptureManager {
   private resamplerLastSample: number = 0;
   private pcmBuffer: Int16Array[] = [];
   private pcmBufferLength: number = 0;
+  private isCapturing: boolean = false;
+
+  get isRunning(): boolean {
+    return this.isCapturing;
+  }
+
+  getRecordedDurationMs(): number {
+    return (this.recordedSamples / 16000) * 1000 + this.offsetTimestamp;
+  }
+
+  async resumeIfSuspended(): Promise<void> {
+    if (this.audioContext && this.audioContext.state === "suspended") {
+      try {
+        await this.audioContext.resume();
+        console.log("[AudioCaptureManager] AudioContext resumed successfully.");
+      } catch (err) {
+        console.warn("[AudioCaptureManager] Failed to resume AudioContext:", err);
+      }
+    }
+  }
 
   async start(
     sessionId: string,
@@ -46,6 +66,24 @@ export class AudioCaptureManager {
     const AudioContextClass = getAudioContextClass();
     this.audioContext = new AudioContextClass();
     const contextSampleRate = this.audioContext.sampleRate;
+    this.isCapturing = true;
+
+    // Monitor AudioContext state transitions (e.g. background suspension, OS audio interrupts)
+    if (this.audioContext && "onstatechange" in this.audioContext) {
+      this.audioContext.onstatechange = () => {
+        if (this.isCapturing && this.audioContext?.state === "suspended") {
+          console.warn(
+            "[AudioCaptureManager] AudioContext suspended in background; auto-resuming...",
+          );
+          this.audioContext.resume().catch((err) => {
+            console.warn(
+              "[AudioCaptureManager] Auto-resume of AudioContext failed:",
+              err,
+            );
+          });
+        }
+      };
+    }
 
     try {
       const getMic = routing === "mix" || routing === "mic-only";
@@ -201,6 +239,10 @@ export class AudioCaptureManager {
     }
 
     // 5. Close audio context
+    this.isCapturing = false;
+    if (this.audioContext) {
+      this.audioContext.onstatechange = null;
+    }
     if (this.audioContext && this.audioContext.state !== "closed") {
       try {
         await this.audioContext.close();

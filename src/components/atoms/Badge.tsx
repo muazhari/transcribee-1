@@ -5,6 +5,7 @@ interface BadgeProps {
   variant?: "violet" | "red" | "yellow" | "green" | "neutral" | "violet-filled";
   pulsing?: boolean;
   className?: string;
+  title?: string;
 }
 
 export default function Badge({
@@ -12,6 +13,7 @@ export default function Badge({
   variant = "neutral",
   pulsing = false,
   className = "",
+  title,
 }: BadgeProps) {
   const baseStyles = "text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md border flex items-center gap-1.5 transition-colors select-none";
 
@@ -25,7 +27,10 @@ export default function Badge({
   };
 
   return (
-    <span className={`${baseStyles} ${variants[variant]} ${className}`}>
+    <span
+      className={`${baseStyles} ${variants[variant]} ${className}`}
+      title={title}
+    >
       {pulsing && (
         <span className="relative flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-75"></span>

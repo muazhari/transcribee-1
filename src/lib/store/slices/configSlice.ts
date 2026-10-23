@@ -14,6 +14,7 @@ export interface ConfigState {
   translationTargetLanguage: string;
   translationLanguageA: string;
   translationLanguageB: string;
+  enableKeepAwake: boolean;
 }
 
 const initialState: ConfigState = {
@@ -30,6 +31,7 @@ const initialState: ConfigState = {
   translationTargetLanguage: "id",
   translationLanguageA: "en",
   translationLanguageB: "id",
+  enableKeepAwake: true,
 };
 
 export const configSlice = createSlice({
