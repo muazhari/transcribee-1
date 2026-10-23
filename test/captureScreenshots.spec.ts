@@ -260,7 +260,8 @@ test.beforeEach(async ({ page }) => {
           if (val) {
             setTimeout(() => {
               if (this._onmessage) {
-                this._onmessage({ data: new Float32Array(4096) });
+                // 4 seconds of PCM audio (64,000 samples at 16kHz) matching mock transcript length
+                this._onmessage({ data: new Float32Array(64000) });
               }
             }, 50);
           }
@@ -279,6 +280,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Capture screenshots of Transcribee layout and flows", async ({ page }) => {
+  test.setTimeout(60000);
+
   // Ensure the target directory exists
   const screenshotDir = path.join(__dirname, "../public/screenshots");
   if (!fs.existsSync(screenshotDir)) {
@@ -356,7 +359,22 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   });
   console.log("Captured Main Application Workspace screenshot.");
 
-  // 6. Capture mobile layout
+  // 6. Switch to Playback Session tab & capture Playback screen
+  await page.locator('button:has-text("Playback Session")').filter({ visible: true }).click();
+  await expect(page.locator('button[title="Play"], button[title="Pause"]')).toBeVisible({ timeout: 5000 });
+  await expect(page.locator("span:has-text('Speaker 1')").first()).toBeVisible();
+
+  // Scrub audio to a specific token (e.g. "demonstration")
+  await page.locator("text=demonstration").first().click();
+  await page.waitForTimeout(600);
+
+  // Take Playback screen screenshot
+  await page.screenshot({
+    path: path.join(screenshotDir, "playback.png"),
+  });
+  console.log("Captured Playback Session screenshot.");
+
+  // 7. Capture mobile layout
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/", { waitUntil: "load" });
   await page.locator('button:has-text("Live Session")').first().waitFor({ state: "visible", timeout: 30000 });

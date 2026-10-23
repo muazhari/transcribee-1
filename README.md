@@ -12,6 +12,7 @@ Transcribee is a browser-only web application orchestrating real-time audio stre
 | :--- | :--- |
 | **Desktop Workspace**<br>![Desktop Workspace](public/screenshots/main_app.png) | Unified layout featuring saved session management, live transcript stream with speaker indicators, and dynamic AI chat drawer. |
 | **Transcription & Translation**<br>![Live Transcription](public/screenshots/transcription.png) | High-frequency token streaming with finalized text refinement, concurrent translation tracks, and click-to-play audio scrubbing. |
+| **Audio Playback & Scrubbing**<br>![Audio Playback](public/screenshots/playback.png) | Dedicated playback session view with token scrubbing, speed controls (0.5x–2.0x), timeline seeking, and speaker synchronization. |
 | **System Configurations**<br>![System Configurations](public/screenshots/settings.png) | Slide-out drawer for Soniox and Google Gemini API keys, model selections, audio routing modes, and language hints. |
 | **Mobile-Responsive Layout**<br>![Mobile Interface](public/screenshots/mobile_view.png) | Responsive viewport navigation collapsing auxiliary panels into fluid tabs focused on live transcription. |
 
