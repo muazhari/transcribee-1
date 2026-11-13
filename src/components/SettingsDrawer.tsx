@@ -194,21 +194,21 @@ export default function SettingsDrawer({
               label="Gemini Model"
               error={errors.aiModel?.message}
               options={[
-                { 
-                  value: "gemini-4-argon", 
-                  label: "Gemini 4 Argon"
+                {
+                  value: "gemini-4-carbon",
+                  label: "Gemini 4 Carbon",
                 },
-                { 
-                  value: "gemini-3.8-flash", 
-                  label: "Gemini 3.8 Flash"
+                {
+                  value: "gemini-4-argon",
+                  label: "Gemini 4 Argon",
+                },
+                {
+                  value: "gemini-4-hydrogen",
+                  label: "Gemini 4 Hydrogen",
                 },
                 {
                   value: "gemini-3.5-flash-lite",
                   label: "Gemini 3.5 Flash Lite",
-                },
-                {
-                  value: "gemini-3.1-pro-preview",
-                  label: "Gemini 3.1 Pro Preview",
                 },
               ]}
               {...register("aiModel")}
@@ -218,8 +218,8 @@ export default function SettingsDrawer({
               label="STT Model"
               error={errors.transcriptionModel?.message}
               options={[
+                { value: "stt-rt-v6", label: "stt-rt-v6" },
                 { value: "stt-rt-v5", label: "stt-rt-v5" },
-                { value: "stt-rt-v4", label: "stt-rt-v4" },
               ]}
               {...register("transcriptionModel")}
             />

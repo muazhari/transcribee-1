@@ -84,7 +84,7 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
     await setupMockEnvironment(page, { seedConfig: true });
     await page.goto("/");
 
-    // 3,500,000 chars -> ~875,000 tokens (87.5% of 1,000,000 token limit for gemini-3.8-flash)
+    // 3,500,000 chars -> ~875,000 tokens (87.5% of 1,000,000 token limit for gemini-4-hydrogen)
     await page.evaluate(async () => {
       const db = await new Promise<IDBDatabase>((resolve, reject) => {
         const req = indexedDB.open("TranscribeeDB", 1);

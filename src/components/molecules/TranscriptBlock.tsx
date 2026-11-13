@@ -30,7 +30,6 @@ export default function TranscriptBlock({
   onSeekToTimestamp: handleSeek,
   onPlaySegment: handlePlaySegment,
 }: TranscriptBlockProps) {
-
   const wordRanges = getWordTimestampRanges(transcript);
 
   const startStr = formatMsToTime(transcript.startTimestamp);
@@ -66,9 +65,7 @@ export default function TranscriptBlock({
       } ${
         isActive
           ? "bg-violet-950/30 border-violet-500/50 shadow-md shadow-violet-950/20 scale-[1.01]"
-          : transcript.isFinal
-            ? "border-white/10 bg-neutral-900/40 hover:border-violet-500/20"
-            : "border-dashed border-amber-500/20 bg-amber-950/5 animate-[pulse_3s_infinite]"
+          : "border-white/10 bg-neutral-900/40 hover:border-violet-500/20"
       }`}
     >
       {/* Header: Speaker identity & timestamp range */}

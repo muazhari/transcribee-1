@@ -6,10 +6,10 @@ import {
 } from "@langchain/core/messages";
 
 export const tokenLimits: Record<string, number> = {
+  "gemini-4-carbon": 1000000,
   "gemini-4-argon": 1000000,
-  "gemini-3.8-flash": 1000000,
+  "gemini-4-hydrogen": 1000000,
   "gemini-3.5-flash-lite": 1000000,
-  "gemini-3.1-pro-preview": 2000000,
 };
 
 export interface GeminiQueryConfig {

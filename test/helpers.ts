@@ -102,8 +102,8 @@ export async function setupMockEnvironment(
         const defaultConfig = {
           sonioxApiKey: "test-soniox-key-xyz",
           googleApiKey: "test-gemini-key-xyz",
-          aiModel: "gemini-3.8-flash",
-          transcriptionModel: "stt-rt-v5",
+          aiModel: "gemini-4-hydrogen",
+          transcriptionModel: "stt-rt-v6",
           languageHints: ["en", "id"],
           enableEndpointDetection: true,
           enableLanguageIdentification: true,

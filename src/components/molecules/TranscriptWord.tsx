@@ -16,14 +16,6 @@ export default function TranscriptWord({
   isFinal,
   onClick,
 }: TranscriptWordProps) {
-  if (!isFinal) {
-    return (
-      <span className="leading-relaxed text-neutral-400 italic select-none tracking-wide rounded transition duration-75 border-b border-transparent">
-        {word}
-      </span>
-    );
-  }
-
   return (
     <span
       onClick={(e) => {

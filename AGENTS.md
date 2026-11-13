@@ -32,7 +32,7 @@ flowchart TD
 - **Tech Stack:** `react-hook-form`, `zod`, `@reduxjs/toolkit`
 - **Responsibilities:**
   - Securely validate API credentials in reactive memory.
-  - Enforce defaults (`gemini-3.8-flash`, `stt-rt-v5`).
+  - Enforce defaults (`gemini-4-hydrogen`, `stt-rt-v6`).
   - Propagate audio routing and language configuration changes to active streams.
 
 ```typescript
@@ -40,8 +40,8 @@ flowchart TD
 export const SettingsSchema = zod.object({
   sonioxApiKey: zod.string().min(1, "Soniox API Key is required"),
   googleApiKey: zod.string().min(1, "Google AI API Key is required"),
-  aiModel: zod.string().default("gemini-3.8-flash"),
-  transcriptionModel: zod.string().default("stt-rt-v5"),
+  aiModel: zod.string().default("gemini-4-hydrogen"),
+  transcriptionModel: zod.string().default("stt-rt-v6"),
   languageHints: zod.array(z.string()).default(["en", "id"]),
   enableEndpointDetection: zod.boolean().default(true),
   enableLanguageIdentification: zod.boolean().default(true),

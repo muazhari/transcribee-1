@@ -22,10 +22,10 @@ test.describe("Transcribee Core E2E Suite", () => {
       .fill("test-gemini-key-xyz");
 
     await expect(page.locator('select[name="aiModel"]')).toHaveValue(
-      "gemini-3.8-flash",
+      "gemini-4-hydrogen",
     );
     await expect(page.locator('select[name="transcriptionModel"]')).toHaveValue(
-      "stt-rt-v5",
+      "stt-rt-v6",
     );
 
     await page.locator('select[name="audioRouting"]').selectOption("mic-only");
