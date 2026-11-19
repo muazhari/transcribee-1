@@ -56,7 +56,10 @@ function fitToTokenLimit(
           chatHistory.length,
           (i) => tokensFor(transcripts.length, i) < tokenLimit,
         );
-  return { transcripts: transcripts.slice(t), chatHistory: chatHistory.slice(c) };
+  return {
+    transcripts: transcripts.slice(t),
+    chatHistory: chatHistory.slice(c),
+  };
 }
 
 export default function ChatPanel() {
@@ -176,6 +179,7 @@ export default function ChatPanel() {
         {
           apiKey: config.googleApiKey,
           model: config.aiModel,
+          thinkingLevel: config.aiThinkingLevel ?? "low",
           context: contextText,
           chatHistory: fitted.chatHistory,
           question: queryText,

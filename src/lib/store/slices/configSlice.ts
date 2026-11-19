@@ -4,6 +4,7 @@ export interface ConfigState {
   sonioxApiKey: string;
   googleApiKey: string;
   aiModel: string;
+  aiThinkingLevel: string;
   transcriptionModel: string;
   languageHints: string[];
   enableEndpointDetection: boolean;
@@ -21,6 +22,7 @@ const initialState: ConfigState = {
   sonioxApiKey: "",
   googleApiKey: "",
   aiModel: "gemini-4-hydrogen",
+  aiThinkingLevel: "low",
   transcriptionModel: "stt-rt-v6",
   languageHints: ["en", "id"],
   enableEndpointDetection: true,

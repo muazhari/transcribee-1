@@ -21,10 +21,13 @@ test.describe("Transcribee Core E2E Suite", () => {
       .getByPlaceholder("Enter Google AI API Key")
       .fill("test-gemini-key-xyz");
 
-    await expect(page.locator('select[name="aiModel"]')).toHaveValue(
+    await expect(page.locator('input[name="aiModel"]')).toHaveValue(
       "gemini-4-hydrogen",
     );
-    await expect(page.locator('select[name="transcriptionModel"]')).toHaveValue(
+    await expect(page.locator('input[name="aiThinkingLevel"]')).toHaveValue(
+      "low",
+    );
+    await expect(page.locator('input[name="transcriptionModel"]')).toHaveValue(
       "stt-rt-v6",
     );
 

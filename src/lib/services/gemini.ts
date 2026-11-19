@@ -1,9 +1,16 @@
-import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import {
+  ChatGoogleGenerativeAI,
+  type GoogleGenerativeAIChatInput,
+} from "@langchain/google-genai";
 import {
   SystemMessage,
   HumanMessage,
   AIMessage,
 } from "@langchain/core/messages";
+
+type ThinkingLevel = NonNullable<
+  GoogleGenerativeAIChatInput["thinkingConfig"]
+>["thinkingLevel"];
 
 export const tokenLimits: Record<string, number> = {
   "gemini-4-neon": 1000000,
@@ -15,6 +22,7 @@ export const tokenLimits: Record<string, number> = {
 export interface GeminiQueryConfig {
   apiKey: string;
   model: string;
+  thinkingLevel?: string;
   context: string;
   chatHistory: { role: "user" | "assistant"; content: string }[];
   question: string;
@@ -47,15 +55,20 @@ export async function askGeminiStream(
   }
 
   const modelName = config.model;
+  const thinkingLevel = config.thinkingLevel?.trim().toUpperCase();
 
   // Initialize the Gemini chat model via LangChain
   const model = new ChatGoogleGenerativeAI({
     model: modelName,
     apiKey: config.apiKey,
     temperature: 1,
-    thinkingConfig: {
-      thinkingLevel: "LOW",
-    },
+    ...(thinkingLevel
+      ? {
+          thinkingConfig: {
+            thinkingLevel: thinkingLevel as ThinkingLevel,
+          },
+        }
+      : {}),
   });
 
   // Compile prompt message sequence

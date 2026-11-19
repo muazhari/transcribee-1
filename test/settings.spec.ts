@@ -206,4 +206,50 @@ test.describe("Settings & Audio Routing Suite", () => {
       page.getByRole("button", { name: /🎙️ Start Recording/i }),
     ).toBeVisible();
   });
+
+  test("stacks model and thinking level inputs vertically, supports presets and free text", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, { seedConfig: true });
+    await page.goto("/");
+
+    await page.locator('button[title="Open Settings"]').click();
+
+    const aiModelInput = page.locator('input[name="aiModel"]');
+    const thinkingInput = page.locator('input[name="aiThinkingLevel"]');
+    const sttModelInput = page.locator('input[name="transcriptionModel"]');
+
+    // Stacked vertically on different lines
+    const aiBox = await aiModelInput.boundingBox();
+    const thinkingBox = await thinkingInput.boundingBox();
+    const sttBox = await sttModelInput.boundingBox();
+    expect(aiBox && thinkingBox && sttBox).toBeTruthy();
+    expect(thinkingBox!.y).toBeGreaterThan(aiBox!.y + aiBox!.height);
+    expect(sttBox!.y).toBeGreaterThan(thinkingBox!.y + thinkingBox!.height);
+
+    // Preset selection for Gemini Thinking Level
+    await thinkingInput.click();
+    await page.getByRole("option", { name: "medium", exact: true }).click();
+    await expect(thinkingInput).toHaveValue("medium");
+
+    // Free-text values for all three fields
+    await aiModelInput.fill("gemini-custom-preview");
+    await thinkingInput.fill("high");
+    await sttModelInput.fill("stt-custom-v7");
+
+    await page.getByRole("button", { name: "Save configurations" }).click();
+
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const root = JSON.parse(localStorage.getItem("persist:root") || "{}");
+          return JSON.parse(root.config || "{}");
+        }),
+      )
+      .toMatchObject({
+        aiModel: "gemini-custom-preview",
+        aiThinkingLevel: "high",
+        transcriptionModel: "stt-custom-v7",
+      });
+  });
 });

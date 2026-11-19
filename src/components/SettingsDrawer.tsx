@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -17,10 +17,112 @@ import LanguageHintsSelector, {
   SUPPORTED_LANGUAGES,
 } from "./molecules/LanguageHintsSelector";
 
+const AI_MODEL_OPTIONS = [
+  "gemini-4-neon",
+  "gemini-4-carbon",
+  "gemini-4-hydrogen",
+  "gemini-3.5-flash-lite",
+];
+
+const AI_THINKING_LEVEL_OPTIONS = ["low", "medium", "high"];
+
+const STT_MODEL_OPTIONS = ["stt-rt-v6", "stt-rt-v5"];
+
+interface ComboInputProps {
+  label: string;
+  name: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  options: string[];
+  placeholder?: string;
+  error?: string;
+}
+
+function ComboInput({
+  label,
+  name,
+  value,
+  onChange,
+  onBlur,
+  options,
+  placeholder,
+  error,
+}: ComboInputProps) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative w-full">
+      {open && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <div className={open ? "relative z-50" : "relative"}>
+        <Input
+          name={name}
+          label={label}
+          value={value}
+          error={error}
+          placeholder={placeholder}
+          autoComplete="off"
+          onFocus={() => setOpen(true)}
+          onClick={() => setOpen(true)}
+          onBlur={onBlur}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Tab") setOpen(false);
+          }}
+          rightIcon={
+            <button
+              type="button"
+              onClick={() => setOpen((prev) => !prev)}
+              aria-label={`Toggle ${label} options`}
+              className="text-neutral-400 hover:text-white text-[0.625rem] cursor-pointer select-none px-1"
+            >
+              ▼
+            </button>
+          }
+        />
+        {open && (
+          <div
+            role="listbox"
+            aria-label={`${label} options`}
+            className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-neutral-800 border border-white/10 rounded-lg shadow-xl py-1"
+          >
+            {options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                role="option"
+                aria-selected={value === opt}
+                onClick={() => {
+                  onChange(opt);
+                  setOpen(false);
+                }}
+                className={`w-full text-left px-4 py-2 text-sm transition-colors cursor-pointer ${
+                  value === opt
+                    ? "bg-violet-500/20 text-white"
+                    : "text-neutral-200 hover:bg-neutral-700/50 hover:text-white"
+                }`}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const settingsFormSchema = z.object({
   sonioxApiKey: z.string().min(1, "Soniox API Key is required"),
   googleApiKey: z.string(),
   aiModel: z.string(),
+  aiThinkingLevel: z.string(),
   transcriptionModel: z.string(),
   languageHints: z
     .array(z.string())
@@ -57,6 +159,14 @@ export default function SettingsDrawer({
   const [showGoogleKey, setShowGoogleKey] = useState(false);
   const [hasDisplayMedia, setHasDisplayMedia] = useState(true);
 
+  const formValues = useMemo(
+    () => ({
+      ...config,
+      aiThinkingLevel: config.aiThinkingLevel ?? "low",
+    }),
+    [config],
+  );
+
   const {
     register,
     handleSubmit,
@@ -66,7 +176,7 @@ export default function SettingsDrawer({
     reset,
   } = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    values: config,
+    values: formValues,
   });
 
   const onCloseHandler = () => {
@@ -189,41 +299,56 @@ export default function SettingsDrawer({
           />
 
           {/* Model Selections */}
-          <div className="grid grid-cols-2 gap-4">
-            <Select
-              label="Gemini Model"
-              error={errors.aiModel?.message}
-              options={[
-                {
-                  value: "gemini-4-neon",
-                  label: "Gemini 4 Neon",
-                },
-                {
-                  value: "gemini-4-carbon",
-                  label: "Gemini 4 Carbon",
-                },
-                {
-                  value: "gemini-4-hydrogen",
-                  label: "Gemini 4 Hydrogen",
-                },
-                {
-                  value: "gemini-3.5-flash-lite",
-                  label: "Gemini 3.5 Flash Lite",
-                },
-              ]}
-              {...register("aiModel")}
-            />
+          <Controller
+            name="aiModel"
+            control={control}
+            render={({ field, fieldState }) => (
+              <ComboInput
+                label="Gemini Model"
+                name={field.name}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                options={AI_MODEL_OPTIONS}
+                placeholder="Select or enter Gemini model"
+                error={fieldState.error?.message}
+              />
+            )}
+          />
 
-            <Select
-              label="STT Model"
-              error={errors.transcriptionModel?.message}
-              options={[
-                { value: "stt-rt-v6", label: "stt-rt-v6" },
-                { value: "stt-rt-v5", label: "stt-rt-v5" },
-              ]}
-              {...register("transcriptionModel")}
-            />
-          </div>
+          <Controller
+            name="aiThinkingLevel"
+            control={control}
+            render={({ field, fieldState }) => (
+              <ComboInput
+                label="Gemini Thinking Level"
+                name={field.name}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                options={AI_THINKING_LEVEL_OPTIONS}
+                placeholder="Select or enter thinking level"
+                error={fieldState.error?.message}
+              />
+            )}
+          />
+
+          <Controller
+            name="transcriptionModel"
+            control={control}
+            render={({ field, fieldState }) => (
+              <ComboInput
+                label="STT Model"
+                name={field.name}
+                value={field.value}
+                onChange={field.onChange}
+                onBlur={field.onBlur}
+                options={STT_MODEL_OPTIONS}
+                placeholder="Select or enter STT model"
+                error={fieldState.error?.message}
+              />
+            )}
+          />
 
           {/* Language Hints */}
           <Controller

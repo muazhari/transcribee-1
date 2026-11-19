@@ -16,6 +16,7 @@ export interface MockConfigOverrides {
   sonioxApiKey?: string;
   googleApiKey?: string;
   aiModel?: string;
+  aiThinkingLevel?: string;
   transcriptionModel?: string;
   languageHints?: string[];
   enableEndpointDetection?: boolean;
@@ -103,6 +104,7 @@ export async function setupMockEnvironment(
           sonioxApiKey: "test-soniox-key-xyz",
           googleApiKey: "test-gemini-key-xyz",
           aiModel: "gemini-4-hydrogen",
+          aiThinkingLevel: "low",
           transcriptionModel: "stt-rt-v6",
           languageHints: ["en", "id"],
           enableEndpointDetection: true,
