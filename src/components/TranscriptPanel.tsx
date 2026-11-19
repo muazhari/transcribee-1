@@ -5,7 +5,6 @@ import { useAppSelector } from "../lib/store/storeHooks";
 import { AudioCaptureManager } from "../lib/services/audioCapture";
 import { generateSrtContent, downloadFile } from "../lib/utils/exportUtils";
 
-import Badge from "./atoms/Badge";
 import ExportDropdown from "./molecules/ExportDropdown";
 import TranscriptBlock from "./molecules/TranscriptBlock";
 import RecordingControls from "./molecules/RecordingControls";
@@ -146,33 +145,6 @@ export default function TranscriptPanel({
           placeholder={defaultTitle}
           className="text-lg font-bold bg-transparent border-b border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none py-0.5 min-w-0 flex-1 text-white placeholder-neutral-500 transition-colors truncate"
         />
-        {isRecording && (
-          <>
-            <Badge
-              variant={
-                isReconnecting
-                  ? "yellow"
-                  : streamHealth === "good"
-                    ? "green"
-                    : "red"
-              }
-              pulsing
-            >
-              {isReconnecting
-                ? "Reconnecting..."
-                : `Health: ${streamHealth.toUpperCase()}`}
-            </Badge>
-            {keepAliveActive && (
-              <Badge
-                variant="violet"
-                className="hidden sm:flex"
-                title="Background and sleep resilience active"
-              >
-                🛡️ Background Active
-              </Badge>
-            )}
-          </>
-        )}
         <ExportDropdown
           onExportAudio={handleExportAudio}
           onExportSrt={handleExportSrt}
@@ -223,6 +195,9 @@ export default function TranscriptPanel({
       <RecordingControls
         isRecording={isRecording}
         onStartStop={isRecording ? stopRecording : startRecording}
+        streamHealth={streamHealth}
+        isReconnecting={isReconnecting}
+        keepAliveActive={keepAliveActive}
       />
     </div>
   );

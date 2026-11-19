@@ -195,12 +195,12 @@ export default function SettingsDrawer({
               error={errors.aiModel?.message}
               options={[
                 {
-                  value: "gemini-4-carbon",
-                  label: "Gemini 4 Carbon",
+                  value: "gemini-4-neon",
+                  label: "Gemini 4 Neon",
                 },
                 {
-                  value: "gemini-4-argon",
-                  label: "Gemini 4 Argon",
+                  value: "gemini-4-carbon",
+                  label: "Gemini 4 Carbon",
                 },
                 {
                   value: "gemini-4-hydrogen",

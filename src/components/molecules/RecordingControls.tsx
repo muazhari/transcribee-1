@@ -1,17 +1,42 @@
 import React from "react";
+import Badge from "../atoms/Badge";
 import Button from "../atoms/Button";
 
 interface RecordingControlsProps {
   isRecording: boolean;
   onStartStop: () => void;
+  streamHealth: "good" | "poor" | "none";
+  isReconnecting: boolean;
+  keepAliveActive: boolean;
 }
 
 export default function RecordingControls({
   isRecording,
   onStartStop,
+  streamHealth,
+  isReconnecting,
+  keepAliveActive,
 }: RecordingControlsProps) {
   return (
-    <div className="p-6 border-t border-white/10 bg-neutral-950/80 flex items-center justify-center gap-4 shrink-0 w-full">
+    <div className="p-6 border-t border-white/10 bg-neutral-950/80 flex flex-wrap items-center justify-center gap-3 sm:gap-4 shrink-0 w-full">
+      {isRecording && (
+        <>
+          <Badge
+            variant={
+              isReconnecting
+                ? "yellow"
+                : streamHealth === "good"
+                  ? "green"
+                  : "red"
+            }
+            pulsing
+          >
+            {isReconnecting
+              ? "Reconnecting..."
+              : `${streamHealth.toUpperCase()}`}
+          </Badge>
+        </>
+      )}
       <Button
         onClick={onStartStop}
         variant={isRecording ? "danger" : "primary"}
@@ -25,6 +50,19 @@ export default function RecordingControls({
         <span>{isRecording ? "⏹️" : "🎙️"}</span>
         <span>{isRecording ? "Stop Recording" : "Start Recording"}</span>
       </Button>
+      {isRecording && (
+        <>
+          {keepAliveActive && (
+            <Badge
+              variant="violet"
+              className="hidden sm:flex"
+              title="Background and sleep resilience active"
+            >
+              🛡️ Alive
+            </Badge>
+          )}
+        </>
+      )}
     </div>
   );
 }
