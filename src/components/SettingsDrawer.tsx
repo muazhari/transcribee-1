@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -50,70 +50,83 @@ function ComboInput({
   error,
 }: ComboInputProps) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
 
   return (
-    <div className="relative w-full">
+    <div
+      ref={containerRef}
+      className={open ? "relative w-full z-50" : "relative w-full"}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+          setOpen(false);
+        }
+      }}
+    >
+      <Input
+        name={name}
+        label={label}
+        value={value}
+        error={error}
+        placeholder={placeholder}
+        autoComplete="off"
+        onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
+        onBlur={onBlur}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" || e.key === "Tab") setOpen(false);
+        }}
+        rightIcon={
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setOpen((prev) => !prev)}
+            aria-label={`Toggle ${label} options`}
+            className="text-neutral-400 hover:text-white text-[0.625rem] cursor-pointer select-none px-1"
+          >
+            ▼
+          </button>
+        }
+      />
       {open && (
         <div
-          className="fixed inset-0 z-40"
-          onClick={() => setOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-      <div className={open ? "relative z-50" : "relative"}>
-        <Input
-          name={name}
-          label={label}
-          value={value}
-          error={error}
-          placeholder={placeholder}
-          autoComplete="off"
-          onFocus={() => setOpen(true)}
-          onClick={() => setOpen(true)}
-          onBlur={onBlur}
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" || e.key === "Tab") setOpen(false);
-          }}
-          rightIcon={
+          role="listbox"
+          aria-label={`${label} options`}
+          className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-neutral-800 border border-white/10 rounded-lg shadow-xl py-1"
+        >
+          {options.map((opt) => (
             <button
+              key={opt}
               type="button"
-              onClick={() => setOpen((prev) => !prev)}
-              aria-label={`Toggle ${label} options`}
-              className="text-neutral-400 hover:text-white text-[0.625rem] cursor-pointer select-none px-1"
+              role="option"
+              aria-selected={value === opt}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onChange(opt);
+                setOpen(false);
+              }}
+              className={`w-full text-left px-4 py-2 text-sm transition-colors cursor-pointer ${
+                value === opt
+                  ? "bg-violet-500/20 text-white"
+                  : "text-neutral-200 hover:bg-neutral-700/50 hover:text-white"
+              }`}
             >
-              ▼
+              {opt}
             </button>
-          }
-        />
-        {open && (
-          <div
-            role="listbox"
-            aria-label={`${label} options`}
-            className="absolute left-0 right-0 z-50 mt-1 max-h-48 overflow-y-auto bg-neutral-800 border border-white/10 rounded-lg shadow-xl py-1"
-          >
-            {options.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                role="option"
-                aria-selected={value === opt}
-                onClick={() => {
-                  onChange(opt);
-                  setOpen(false);
-                }}
-                className={`w-full text-left px-4 py-2 text-sm transition-colors cursor-pointer ${
-                  value === opt
-                    ? "bg-violet-500/20 text-white"
-                    : "text-neutral-200 hover:bg-neutral-700/50 hover:text-white"
-                }`}
-              >
-                {opt}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

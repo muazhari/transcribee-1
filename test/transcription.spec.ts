@@ -27,7 +27,7 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
     ).toBeVisible();
   });
 
-  test("renders unfinalized tokens in italic and refines to clickable spans upon finalization and <end>", async ({
+  test("renders unfinalized tokens live and replaces them with clickable spans upon finalization and <end>", async ({
     page,
   }) => {
     await setupMockEnvironment(page, {
@@ -38,6 +38,7 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
 
     await page.getByRole("button", { name: "+ New Session" }).click();
     await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
 
     await expect(
       page.getByText(/Listening for transcription/i),
@@ -67,8 +68,8 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
       ]);
     });
 
-    const draftToken = page.locator("span.italic", { hasText: "Drafting" });
-    await expect(draftToken).toBeVisible();
+    await expect(page.getByText("Drafting", { exact: true })).toBeVisible();
+    await expect(page.getByText("live...", { exact: true })).toBeVisible();
 
     // Now emit finalized replacement + <end> token
     await page.evaluate(() => {
@@ -99,7 +100,7 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
       ]);
     });
 
-    await expect(page.locator("span.italic")).toHaveCount(0);
+    await expect(page.getByText("Drafting", { exact: true })).toHaveCount(0);
     const finalWord = page.locator("span", { hasText: "Finalized" }).first();
     await expect(finalWord).toBeVisible();
     await expect(finalWord).toHaveAttribute("title", /Play word/);
@@ -119,7 +120,7 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
 
     await page.getByRole("button", { name: "+ New Session" }).click();
     await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
-    await expect(page.getByText("Health: GOOD")).toBeVisible();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
 
     await page.evaluate(() => {
       (window as any).__lastWs.pushTokens([
@@ -184,13 +185,13 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
 
     await page.getByRole("button", { name: "+ New Session" }).click();
     await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
-    await expect(page.getByText("Health: GOOD")).toBeVisible();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
 
     await page.evaluate(() => {
       (window as any).__lastWs.pushError(401, "Invalid Soniox API key");
     });
 
-    await expect(page.getByText("Health: POOR")).toBeVisible();
+    await expect(page.getByText("POOR", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
   });
 

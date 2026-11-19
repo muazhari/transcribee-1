@@ -64,7 +64,7 @@ test.describe("Transcribee Core E2E Suite", () => {
     await expect(page.getByText(/Session - \d+\/\d+\/\d+/)).toBeVisible();
 
     await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
-    await expect(page.getByText("Health: GOOD")).toBeVisible();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
 
     await expect(page.getByText("Hello")).toBeVisible();
     await expect(page.getByText("world")).toBeVisible();

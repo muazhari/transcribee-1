@@ -157,7 +157,7 @@ test.describe("Settings & Audio Routing Suite", () => {
 
     // 1. speaker-only -> only getDisplayMedia called
     await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
-    await expect(page.getByText("Health: GOOD")).toBeVisible();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
 
     let calls = await page.evaluate(() => ({
@@ -172,7 +172,7 @@ test.describe("Settings & Audio Routing Suite", () => {
     await page.getByRole("button", { name: "Save configurations" }).click();
 
     await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
-    await expect(page.getByText("Health: GOOD")).toBeVisible();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
 
     calls = await page.evaluate(() => ({

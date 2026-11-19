@@ -211,8 +211,8 @@ test("Background & Sleep Keep-Alive: Screen Wake Lock, MediaSession, and Audio K
   const stopButton = page.locator("button:has-text('Stop Recording')");
   await expect(stopButton).toBeVisible({ timeout: 5000 });
 
-  // Verify Background Active indicator badge is visible in the UI
-  const bgBadge = page.locator("text=Background Active");
+  // Verify Alive indicator badge is visible in the UI
+  const bgBadge = page.getByText("🛡️ Alive");
   await expect(bgBadge).toBeVisible();
 
   // Verify Screen Wake Lock was requested
@@ -260,8 +260,8 @@ test("Background & Sleep Keep-Alive: Screen Wake Lock, MediaSession, and Audio K
     page.locator("button:has-text('Start Recording')"),
   ).toBeVisible({ timeout: 5000 });
 
-  // Verify Background Active badge disappears when recording stops
-  await expect(page.locator("text=Background Active")).not.toBeVisible();
+  // Verify Alive badge disappears when recording stops
+  await expect(page.getByText("🛡️ Alive")).not.toBeVisible();
 });
 
 test("Sleep Wake recovery: resumes AudioContext and maintains stream integrity", async ({
@@ -326,7 +326,7 @@ test("Unexpected STT WebSocket disconnection automatically reconnects with UI st
 
   // Verify initial transcription arrived
   await expect(page.getByText("Background", { exact: true })).toBeVisible({ timeout: 5000 });
-  await expect(page.locator("text=Health: GOOD")).toBeVisible();
+  await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
 
   // Trigger unexpected drop on the active WebSocket and buffer 0.5s of audio while disconnected
   await page.evaluate(() => {
@@ -344,7 +344,7 @@ test("Unexpected STT WebSocket disconnection automatically reconnects with UI st
 
   // Wait for automatic reconnection (backoff is ~1s + mock handshake ~50ms)
   await expect(page.locator("text=Reconnecting...")).not.toBeVisible({ timeout: 5000 });
-  await expect(page.locator("text=Health: GOOD")).toBeVisible({ timeout: 5000 });
+  await expect(page.getByText("GOOD", { exact: true })).toBeVisible({ timeout: 5000 });
 
   // Verify that new tokens arriving on the reconnected stream are rendered
   await expect(page.locator("text=Reconnected")).toBeVisible({ timeout: 5000 });
