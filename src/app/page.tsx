@@ -38,6 +38,74 @@ const MOBILE_TABS = [
   { id: "chat", label: "🤖 AI Chat" },
 ] as const;
 
+const DEFAULT_LEFT_WIDTH = 320;
+const DEFAULT_RIGHT_WIDTH = 384;
+const MIN_LEFT_WIDTH = 220;
+const MIN_RIGHT_WIDTH = 260;
+const MIN_MAIN_WIDTH = 320;
+const KEYBOARD_RESIZE_STEP = 16;
+
+function clampPanelWidth(
+  value: number,
+  minWidth: number,
+  otherPanelWidth: number,
+  containerWidth: number,
+) {
+  const maxWidth =
+    containerWidth > 0
+      ? Math.max(minWidth, containerWidth - otherPanelWidth - MIN_MAIN_WIDTH)
+      : value;
+  return Math.round(Math.min(Math.max(value, minWidth), maxWidth));
+}
+
+interface ResizeHandleProps {
+  label: string;
+  value: number;
+  min: number;
+  active: boolean;
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onKeyDown: (e: React.KeyboardEvent<HTMLDivElement>) => void;
+}
+
+function ResizeHandle({
+  label,
+  value,
+  min,
+  active,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onKeyDown,
+}: ResizeHandleProps) {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={label}
+      aria-valuenow={value}
+      aria-valuemin={min}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onLostPointerCapture={onPointerUp}
+      onKeyDown={onKeyDown}
+      className="hidden lg:flex w-1.5 -mx-[3px] z-10 h-full shrink-0 cursor-col-resize select-none touch-none items-center justify-center group focus:outline-none"
+    >
+      <div
+        className={`w-0.5 h-full transition-colors ${
+          active
+            ? "bg-violet-500"
+            : "bg-transparent group-hover:bg-violet-500/80 group-focus-visible:bg-violet-500"
+        }`}
+      />
+    </div>
+  );
+}
+
 export default function Home() {
   const dispatch = useAppDispatch();
   const activeSession = useAppSelector(
@@ -55,6 +123,125 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<
     "sessions" | "transcription" | "playback" | "chat"
   >("transcription");
+
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const [panelWidths, setPanelWidths] = useState({
+    left: DEFAULT_LEFT_WIDTH,
+    right: DEFAULT_RIGHT_WIDTH,
+  });
+  const [dragging, setDragging] = useState<"left" | "right" | null>(null);
+  const dragRef = useRef<{
+    side: "left" | "right";
+    startX: number;
+    startWidth: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const clampToViewport = () => {
+      const width = layoutRef.current?.clientWidth ?? 0;
+      if (width < 1024) return;
+      setPanelWidths((prev) => {
+        if (prev.left + prev.right <= width - MIN_MAIN_WIDTH) return prev;
+        const left = clampPanelWidth(
+          prev.left,
+          MIN_LEFT_WIDTH,
+          prev.right,
+          width,
+        );
+        const right = clampPanelWidth(prev.right, MIN_RIGHT_WIDTH, left, width);
+        return left === prev.left && right === prev.right
+          ? prev
+          : { left, right };
+      });
+    };
+    window.addEventListener("resize", clampToViewport);
+    return () => window.removeEventListener("resize", clampToViewport);
+  }, []);
+
+  const startResize = (
+    side: "left" | "right",
+    e: React.PointerEvent<HTMLDivElement>,
+  ) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      side,
+      startX: e.clientX,
+      startWidth: side === "left" ? panelWidths.left : panelWidths.right,
+    };
+    setDragging(side);
+  };
+
+  const handleResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const containerWidth = layoutRef.current?.clientWidth ?? 0;
+    const delta =
+      drag.side === "left" ? e.clientX - drag.startX : drag.startX - e.clientX;
+    setPanelWidths((prev) =>
+      drag.side === "left"
+        ? {
+            ...prev,
+            left: clampPanelWidth(
+              drag.startWidth + delta,
+              MIN_LEFT_WIDTH,
+              prev.right,
+              containerWidth,
+            ),
+          }
+        : {
+            ...prev,
+            right: clampPanelWidth(
+              drag.startWidth + delta,
+              MIN_RIGHT_WIDTH,
+              prev.left,
+              containerWidth,
+            ),
+          },
+    );
+  };
+
+  const stopResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    setDragging(null);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  const handleResizeKeyDown = (
+    side: "left" | "right",
+    e: React.KeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const containerWidth = layoutRef.current?.clientWidth ?? 0;
+    const sign = (e.key === "ArrowRight" ? 1 : -1) * (side === "left" ? 1 : -1);
+    const delta = sign * KEYBOARD_RESIZE_STEP;
+    setPanelWidths((prev) =>
+      side === "left"
+        ? {
+            ...prev,
+            left: clampPanelWidth(
+              prev.left + delta,
+              MIN_LEFT_WIDTH,
+              prev.right,
+              containerWidth,
+            ),
+          }
+        : {
+            ...prev,
+            right: clampPanelWidth(
+              prev.right + delta,
+              MIN_RIGHT_WIDTH,
+              prev.left,
+              containerWidth,
+            ),
+          },
+    );
+  };
 
   // Load existing sessions on mount
   useEffect(() => {
@@ -325,10 +512,18 @@ export default function Home() {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 w-full flex flex-col lg:flex-row min-h-0 overflow-hidden">
+      <div
+        ref={layoutRef}
+        className={`flex-1 w-full flex flex-col lg:flex-row min-h-0 overflow-hidden ${
+          dragging ? "select-none cursor-col-resize" : ""
+        }`}
+      >
         {/* SessionPanel history */}
         <div
-          className={`${activeTab === "sessions" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-auto`}
+          style={
+            { "--panel-w": `${panelWidths.left}px` } as React.CSSProperties
+          }
+          className={`${activeTab === "sessions" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-[var(--panel-w)]`}
         >
           <SessionPanel
             onNewSession={handleNewSession}
@@ -336,6 +531,17 @@ export default function Home() {
             onSelectSession={() => setActiveTab("transcription")}
           />
         </div>
+
+        <ResizeHandle
+          label="Resize sessions panel"
+          value={panelWidths.left}
+          min={MIN_LEFT_WIDTH}
+          active={dragging === "left"}
+          onPointerDown={(e) => startResize("left", e)}
+          onPointerMove={handleResizeMove}
+          onPointerUp={stopResize}
+          onKeyDown={(e) => handleResizeKeyDown("left", e)}
+        />
 
         {/* Main panel */}
         <div
@@ -380,9 +586,23 @@ export default function Home() {
           )}
         </div>
 
+        <ResizeHandle
+          label="Resize chat panel"
+          value={panelWidths.right}
+          min={MIN_RIGHT_WIDTH}
+          active={dragging === "right"}
+          onPointerDown={(e) => startResize("right", e)}
+          onPointerMove={handleResizeMove}
+          onPointerUp={stopResize}
+          onKeyDown={(e) => handleResizeKeyDown("right", e)}
+        />
+
         {/* Chat Assistant */}
         <div
-          className={`${activeTab === "chat" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-auto`}
+          style={
+            { "--panel-w": `${panelWidths.right}px` } as React.CSSProperties
+          }
+          className={`${activeTab === "chat" ? "flex" : "max-lg:hidden"} lg:flex h-full shrink-0 w-full lg:w-[var(--panel-w)]`}
         >
           <ChatPanel />
         </div>

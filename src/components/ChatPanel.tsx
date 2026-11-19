@@ -268,7 +268,7 @@ export default function ChatPanel() {
 
   if (!activeSession) {
     return (
-      <div className="flex-1 h-full flex flex-col bg-neutral-900 text-white justify-center items-center p-8 text-neutral-500">
+      <div className="w-full min-w-0 flex-1 h-full flex flex-col bg-neutral-900 lg:border-l border-white/10 text-white justify-center items-center p-8 text-neutral-500">
         <span className="text-4xl mb-3">🤖</span>
         <h3 className="font-bold text-lg text-neutral-400">Ready to chat</h3>
         <p className="text-neutral-500 text-sm max-w-sm mt-1 text-center">
@@ -279,7 +279,7 @@ export default function ChatPanel() {
   }
 
   return (
-    <div className="w-full lg:w-96 h-full bg-neutral-950 lg:border-l border-white/10 flex flex-col text-white">
+    <div className="w-full min-w-0 h-full bg-neutral-950 lg:border-l border-white/10 flex flex-col text-white">
       {/* Header */}
       <div className="px-6 pt-5 pb-4 border-b border-white/10 flex flex-row gap-3">
         {/* Token capacity meter */}
