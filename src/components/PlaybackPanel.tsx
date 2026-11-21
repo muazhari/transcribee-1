@@ -54,13 +54,15 @@ export default function PlaybackPanel() {
       try {
         const url =
           await AudioCaptureManager.getSessionAudioWavUrl(activeSessionId);
-        if (active) {
-          setAudioUrl(url);
-          audioUrlRef.current = url;
-          // Reset player states
-          setCurrentTime(0);
-          setIsPlaying(false);
+        if (!active) {
+          if (url) URL.revokeObjectURL(url);
+          return;
         }
+        setAudioUrl(url);
+        audioUrlRef.current = url;
+        // Reset player states
+        setCurrentTime(0);
+        setIsPlaying(false);
       } catch (e) {
         console.error("Failed to compile session audio:", e);
       } finally {

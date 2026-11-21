@@ -1,59 +1,12 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
+import { setupMockEnvironment } from "./helpers";
 
 test("Reload mid-recording does not leave the app stuck in recording state", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    // Socket that opens but never closes; audio devices are fake
-    class MockWebSocket extends EventTarget {
-      static OPEN = 1;
-      readyState = 0;
-      binaryType = "blob";
-      onopen: any = null;
-      onmessage: any = null;
-      onerror: any = null;
-      onclose: any = null;
-      constructor() {
-        super();
-        setTimeout(() => {
-          this.readyState = 1;
-          this.onopen?.(new Event("open"));
-        }, 50);
-      }
-      send() {}
-      close() {
-        this.readyState = 3;
-      }
-    }
-    const track = { stop: () => {}, enabled: true };
-    const stream = {
-      getTracks: () => [track],
-      getAudioTracks: () => [track],
-      getVideoTracks: () => [track],
-    };
-    class MockAudioContext {
-      state = "running";
-      sampleRate = 16000;
-      destination = {};
-      audioWorklet = { addModule: async () => {} };
-      createMediaStreamSource() {
-        return { connect() {}, disconnect() {} };
-      }
-      close() {
-        this.state = "closed";
-        return Promise.resolve();
-      }
-    }
-    class MockAudioWorkletNode {
-      port: any = {};
-      connect() {}
-      disconnect() {}
-    }
-    (window as any).WebSocket = MockWebSocket;
-    (window as any).AudioContext = MockAudioContext;
-    (window as any).AudioWorkletNode = MockAudioWorkletNode;
-    (navigator.mediaDevices as any).getUserMedia = async () => stream;
+  await setupMockEnvironment(page, {
+    autoEmitTokens: false,
+    audioSamplesPerRecording: 0,
   });
 
   await page.goto("/", { waitUntil: "load" });

@@ -6,6 +6,14 @@ export interface WordTimestampRange {
   end: number;
 }
 
+export const getDefaultSessionTitle = (createdAt: Date | string): string =>
+  `Session - ${new Date(createdAt).toLocaleString()}`;
+
+export const getSessionTitle = (session: {
+  title?: string | null;
+  createdAt: Date | string;
+}): string => session.title || getDefaultSessionTitle(session.createdAt);
+
 /**
  * Formats milliseconds into standard M:SS time string.
  * Example: 65000 -> "1:05"

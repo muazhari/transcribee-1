@@ -69,6 +69,10 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
     });
 
     await expect(page.getByText("Drafting", { exact: true })).toBeVisible();
+    await expect(page.getByText("Drafting", { exact: true })).toHaveAttribute(
+      "title",
+      "Waiting to finalize...",
+    );
     await expect(page.getByText("live...", { exact: true })).toBeVisible();
 
     // Now emit finalized replacement + <end> token
@@ -192,7 +196,35 @@ test.describe("Live Transcription, Diarization & Scroll Pinning Suite", () => {
     });
 
     await expect(page.getByText("POOR", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("401: Invalid Soniox API key", { exact: false }),
+    ).toBeVisible();
     await page.getByRole("button", { name: /⏹️ Stop Recording/i }).click();
+  });
+
+  test("stops recording and shows notice when captured audio track ends unexpectedly", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, {
+      seedConfig: true,
+      autoEmitTokens: false,
+    });
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
+
+    await page.evaluate(() => {
+      (window as any).__lastMicTrack?.onended?.();
+    });
+
+    await expect(
+      page.getByRole("button", { name: /🎙️ Start Recording/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Audio source disconnected", { exact: false }),
+    ).toBeVisible();
   });
 
   test("displays 'Jump to latest' button on manual upward scroll and re-pins on click", async ({

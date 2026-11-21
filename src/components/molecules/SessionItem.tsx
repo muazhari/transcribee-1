@@ -1,5 +1,6 @@
 import React from "react";
 import { Session } from "../../lib/services/db";
+import { getSessionTitle } from "../../lib/utils/transcriptUtils";
 import Button from "../atoms/Button";
 
 interface SessionItemProps {
@@ -16,7 +17,6 @@ export default function SessionItem({
   onDelete,
 }: SessionItemProps) {
   const dateStr = new Date(session.createdAt).toLocaleString();
-  const defaultTitle = `Session - ${new Date(session.createdAt).toLocaleString()}`;
 
   return (
     <div
@@ -29,7 +29,7 @@ export default function SessionItem({
     >
       <div className="flex flex-col gap-1 min-w-0 flex-1">
         <span className="text-xs font-bold text-white truncate">
-          {session.title || defaultTitle}
+          {getSessionTitle(session)}
         </span>
         <span className="text-[0.625rem] text-neutral-500">{dateStr}</span>
       </div>

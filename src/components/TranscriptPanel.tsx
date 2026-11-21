@@ -3,11 +3,17 @@
 import React, { useRef, useEffect, useState } from "react";
 import { useAppSelector } from "../lib/store/storeHooks";
 import { AudioCaptureManager } from "../lib/services/audioCapture";
-import { generateSrtContent, downloadFile } from "../lib/utils/exportUtils";
+import {
+  generateSrtContent,
+  downloadFile,
+  triggerBlobDownload,
+} from "../lib/utils/exportUtils";
+import { getDefaultSessionTitle } from "../lib/utils/transcriptUtils";
 
 import ExportDropdown from "./molecules/ExportDropdown";
 import TranscriptBlock from "./molecules/TranscriptBlock";
 import RecordingControls from "./molecules/RecordingControls";
+import WarningBanner from "./atoms/WarningBanner";
 
 interface TranscriptPanelProps {
   onRenameSession: (title: string) => void;
@@ -28,17 +34,24 @@ export default function TranscriptPanel({
   const transcripts = useAppSelector(
     (state) => state.transcription.transcripts,
   );
-  const { isRecording, streamHealth, isReconnecting, keepAliveActive } =
-    useAppSelector((state) => state.mediaControl);
+  const {
+    isRecording,
+    streamHealth,
+    isReconnecting,
+    keepAliveActive,
+    streamError,
+  } = useAppSelector((state) => state.mediaControl);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [exportingAudio, setExportingAudio] = useState(false);
   const isAutoScrollLocked = useRef(true);
-  const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const pinKey = `${activeSession?.id ?? ""}:${isRecording}`;
+  const [unpinnedKey, setUnpinnedKey] = useState<string | null>(null);
+  const showScrollBottom = unpinnedKey === pinKey;
 
   const scrollToBottom = () => {
     isAutoScrollLocked.current = true;
-    setShowScrollBottom(false);
+    setUnpinnedKey(null);
     const el = containerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   };
@@ -52,12 +65,10 @@ export default function TranscriptPanel({
 
   // Re-pin scroll to bottom when session changes or recording starts
   useEffect(() => {
-    scrollToBottom();
-  }, [activeSession?.id]);
-
-  useEffect(() => {
-    if (isRecording) scrollToBottom();
-  }, [isRecording]);
+    isAutoScrollLocked.current = true;
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [activeSession?.id, isRecording]);
 
   if (!activeSession) {
     return (
@@ -80,7 +91,7 @@ export default function TranscriptPanel({
     const isAtBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_BOTTOM_THRESHOLD;
     isAutoScrollLocked.current = isAtBottom;
-    setShowScrollBottom(!isAtBottom && transcripts.length > 0);
+    setUnpinnedKey(!isAtBottom && transcripts.length > 0 ? pinKey : null);
   };
 
   const handleTranscriptClick = (startTimestamp: number, endTimestamp: number) =>
@@ -90,7 +101,7 @@ export default function TranscriptPanel({
       endTimestamp,
     );
 
-  const defaultTitle = `Session - ${new Date(activeSession.createdAt).toLocaleString()}`;
+  const defaultTitle = getDefaultSessionTitle(activeSession.createdAt);
   const baseFilename =
     (activeSession.title || defaultTitle)
       .toLowerCase()
@@ -121,11 +132,7 @@ export default function TranscriptPanel({
         alert("No audio recorded for this session yet.");
         return;
       }
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${baseFilename}.wav`;
-      a.click();
-      URL.revokeObjectURL(url);
+      triggerBlobDownload(url, `${baseFilename}.wav`);
     } catch (e) {
       console.error("Failed to compile audio for export:", e);
       alert("Failed to export audio.");
@@ -153,6 +160,12 @@ export default function TranscriptPanel({
           hasTranscripts={transcripts.length > 0}
         />
       </div>
+
+      {streamError && (
+        <WarningBanner type="error">
+          <strong>Stream Error:</strong> {streamError}
+        </WarningBanner>
+      )}
 
       {/* Live Transcript Content Panel */}
       <div className="flex-1 min-h-0 relative flex flex-col">
@@ -194,7 +207,7 @@ export default function TranscriptPanel({
       {/* Dashboard Recording controls */}
       <RecordingControls
         isRecording={isRecording}
-        onStartStop={isRecording ? stopRecording : startRecording}
+        onStartStop={() => (isRecording ? stopRecording() : startRecording())}
         streamHealth={streamHealth}
         isReconnecting={isReconnecting}
         keepAliveActive={keepAliveActive}

@@ -16,6 +16,17 @@ export default function TranscriptWord({
   isFinal,
   onClick,
 }: TranscriptWordProps) {
+  if (!isFinal) {
+    return (
+      <span
+        className="text-neutral-400 italic"
+        title="Waiting to finalize..."
+      >
+        {word}
+      </span>
+    );
+  }
+
   return (
     <span
       onClick={(e) => {

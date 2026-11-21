@@ -5,13 +5,14 @@ const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
   testDir: "./test",
-  testIgnore: ["**/capture-screenshots.spec.ts"],
+  testIgnore: ["**/capture-screenshots.spec.ts", "**/*.test.ts"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   webServer: {
-    command: `node -e "const fs=require('fs'),cp=require('child_process');if(!fs.existsSync('.next/BUILD_ID'))cp.execSync('bun run build',{stdio:'inherit'});" && bun x next start -p ${PORT}`,
+    command: `bun run build && bun x next start -p ${PORT}`,
     url: BASE_URL,
+    timeout: 120_000,
     reuseExistingServer: !process.env.CI,
   },
   workers: process.env.CI ? 2 : undefined,

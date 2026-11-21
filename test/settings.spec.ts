@@ -57,10 +57,9 @@ test.describe("Settings & Audio Routing Suite", () => {
 
     await expect
       .poll(async () => {
-        const persisted = await page.evaluate(() => {
-          const root = JSON.parse(localStorage.getItem("persist:root") || "{}");
-          return JSON.parse(root.config || "{}");
-        });
+        const persisted = await page.evaluate(() =>
+          JSON.parse(localStorage.getItem("transcribee:config") || "{}"),
+        );
         return persisted.languageHints;
       })
       .toEqual(["en", "es"]);
@@ -241,15 +240,45 @@ test.describe("Settings & Audio Routing Suite", () => {
 
     await expect
       .poll(async () =>
-        page.evaluate(() => {
-          const root = JSON.parse(localStorage.getItem("persist:root") || "{}");
-          return JSON.parse(root.config || "{}");
-        }),
+        page.evaluate(() =>
+          JSON.parse(localStorage.getItem("transcribee:config") || "{}"),
+        ),
       )
       .toMatchObject({
         aiModel: "gemini-custom-preview",
         aiThinkingLevel: "high",
         transcriptionModel: "stt-custom-v7",
       });
+  });
+
+  test("stops recording and alerts when mid-recording audio rerouting fails", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, {
+      seedConfig: { audioRouting: "mic-only" },
+      displayMediaNoAudio: true,
+    });
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    await page.getByRole("button", { name: /🎙️ Start Recording/i }).click();
+    await expect(page.getByText("GOOD", { exact: true })).toBeVisible();
+
+    let dialogMessage = "";
+    page.once("dialog", async (dialog) => {
+      dialogMessage = dialog.message();
+      await dialog.accept();
+    });
+
+    await page.locator('button[title="Open Settings"]').click();
+    await page
+      .locator('select[name="audioRouting"]')
+      .selectOption("speaker-only");
+    await page.getByRole("button", { name: "Save configurations" }).click();
+
+    await expect.poll(() => dialogMessage).toContain("No audio track");
+    await expect(
+      page.getByRole("button", { name: /🎙️ Start Recording/i }),
+    ).toBeVisible();
   });
 });

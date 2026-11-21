@@ -1,4 +1,3 @@
-import { tokenLimits } from "@/lib/services/gemini";
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export interface ChatMessage {
@@ -8,19 +7,11 @@ export interface ChatMessage {
 
 export interface ChatContextState {
   chatHistory: ChatMessage[];
-  tokenCount: number;
-  tokenLimit: number; // e.g. 15,000 tokens
-  tokenLimitExceeded: boolean; // >= 85%
-  tokenLimitTruncated: boolean; // >= 100%
   isLoading: boolean;
 }
 
 const initialState: ChatContextState = {
   chatHistory: [],
-  tokenCount: 0,
-  tokenLimit: 1000000,
-  tokenLimitExceeded: false,
-  tokenLimitTruncated: false,
   isLoading: false,
 };
 
@@ -40,31 +31,6 @@ export const chatContextSlice = createSlice({
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.isLoading = action.payload;
     },
-    recalculateTokens: (
-      state,
-      action: PayloadAction<{
-        transcriptsText: string;
-        chatHistoryText: string;
-        questionText: string;
-        aiModel: string;
-      }>,
-    ) => {
-      const { transcriptsText, chatHistoryText, questionText, aiModel } =
-        action.payload;
-
-      state.tokenLimit = tokenLimits[aiModel] ?? 1000000;
-
-      const systemPrompt = `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${transcriptsText}`;
-      const totalInputText = `${systemPrompt}\n${chatHistoryText}\n${questionText}`;
-
-      // Simple client-side token count approximation: 1 token = 4 characters
-      const tokens = Math.ceil(totalInputText.length / 4);
-      state.tokenCount = tokens;
-
-      const pct = (tokens / state.tokenLimit) * 100;
-      state.tokenLimitExceeded = pct >= 85;
-      state.tokenLimitTruncated = pct >= 100;
-    },
   },
 });
 
@@ -73,6 +39,5 @@ export const {
   setChatHistory,
   clearChatHistory,
   setLoading,
-  recalculateTokens,
 } = chatContextSlice.actions;
 export default chatContextSlice.reducer;

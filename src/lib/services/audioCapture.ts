@@ -1,5 +1,38 @@
 import { db } from "./db";
 
+export interface ResamplerState {
+  position: number;
+  lastSample: number;
+}
+
+// Stateful linear interpolation resampler to prevent aliasing buzz and chunk-boundary clicks
+export function downsampleLinear(
+  buffer: Float32Array,
+  inputSampleRate: number,
+  outputSampleRate: number,
+  state: ResamplerState,
+): Float32Array {
+  if (inputSampleRate === outputSampleRate || buffer.length === 0) return buffer;
+
+  const ratio = inputSampleRate / outputSampleRate;
+  let pos = state.position;
+  const output = new Float32Array(Math.ceil((buffer.length - pos) / ratio));
+  let outIdx = 0;
+
+  while (Math.floor(pos) + 1 < buffer.length) {
+    const i1 = Math.floor(pos);
+    const fraction = pos - i1;
+    const s1 = i1 < 0 ? state.lastSample : buffer[i1];
+    output[outIdx++] = s1 * (1 - fraction) + buffer[i1 + 1] * fraction;
+    pos += ratio;
+  }
+
+  state.position = pos - buffer.length;
+  state.lastSample = buffer[buffer.length - 1];
+
+  return output.subarray(0, outIdx);
+}
+
 const getAudioContextClass = () =>
   window.AudioContext ||
   (window as unknown as { webkitAudioContext: typeof AudioContext })
@@ -17,8 +50,7 @@ export class AudioCaptureManager {
   private offsetTimestamp: number = 0;
   private onAudioDataCallback: ((data: Int16Array) => void) | null = null;
   private pendingSaves = new Set<Promise<void>>();
-  private resamplerPosition: number = 0;
-  private resamplerLastSample: number = 0;
+  private resamplerState: ResamplerState = { position: 0, lastSample: 0 };
   private pcmBuffer: Int16Array[] = [];
   private pcmBufferLength: number = 0;
   private isCapturing: boolean = false;
@@ -48,6 +80,7 @@ export class AudioCaptureManager {
     routing: "mix" | "mic-only" | "speaker-only",
     onAudioData: (data: Int16Array) => void,
     offsetTimestamp: number = 0,
+    onTrackEnded?: () => void,
   ): Promise<void> {
     if (typeof window === "undefined") return;
 
@@ -58,8 +91,7 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = onAudioData;
     this.recordedSamples = 0;
     this.offsetTimestamp = offsetTimestamp;
-    this.resamplerPosition = 0;
-    this.resamplerLastSample = 0;
+    this.resamplerState = { position: 0, lastSample: 0 };
 
     // Create the AudioContext using native hardware sample rate.
     // Avoid forcing requested sampleRate: 16000 because Chromium's MediaStreamAudioSourceNode
@@ -89,6 +121,17 @@ export class AudioCaptureManager {
     try {
       const getMic = routing === "mix" || routing === "mic-only";
       const getSpeaker = routing === "mix" || routing === "speaker-only";
+      let trackEndNotified = false;
+      const attachTrackEnded = (stream: MediaStream) => {
+        if (!onTrackEnded) return;
+        for (const track of stream.getAudioTracks()) {
+          track.onended = () => {
+            if (!this.isCapturing || trackEndNotified) return;
+            trackEndNotified = true;
+            onTrackEnded();
+          };
+        }
+      };
 
       // 1. Initialize Microphone capture
       if (getMic) {
@@ -101,6 +144,7 @@ export class AudioCaptureManager {
             "AudioContext was closed during microphone initialization.",
           );
         }
+        attachTrackEnded(this.micStream);
         this.micSource = this.audioContext.createMediaStreamSource(
           this.micStream,
         );
@@ -122,6 +166,7 @@ export class AudioCaptureManager {
             "AudioContext was closed during speaker initialization.",
           );
         }
+        attachTrackEnded(this.speakerStream);
         this.speakerSource = this.audioContext.createMediaStreamSource(
           this.speakerStream,
         );
@@ -191,10 +236,11 @@ export class AudioCaptureManager {
       // Handle raw buffer messages from the processor
       this.processorNode.port.onmessage = (event) => {
         const inputData = event.data as Float32Array;
-        const downsampled = this.downsample(
+        const downsampled = downsampleLinear(
           inputData,
           contextSampleRate,
           16000,
+          this.resamplerState,
         );
         const pcm16 = this.floatTo16BitPCM(downsampled);
 
@@ -211,6 +257,8 @@ export class AudioCaptureManager {
   }
 
   async stop(): Promise<void> {
+    this.isCapturing = false;
+
     // 1. Clean up worklet node
     if (this.processorNode) {
       this.processorNode.port.onmessage = null;
@@ -225,10 +273,16 @@ export class AudioCaptureManager {
     this.speakerSource = null;
     this.flushPcm();
 
-    // 3. Stop hardware streams
-    this.micStream?.getTracks().forEach((track) => track.stop());
+    // 3. Stop hardware streams without firing unexpected-end callbacks
+    this.micStream?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
     this.micStream = null;
-    this.speakerStream?.getTracks().forEach((track) => track.stop());
+    this.speakerStream?.getTracks().forEach((track) => {
+      track.onended = null;
+      track.stop();
+    });
     this.speakerStream = null;
 
     // 4. Wait for all pending database saves to complete
@@ -240,7 +294,6 @@ export class AudioCaptureManager {
     }
 
     // 5. Close audio context
-    this.isCapturing = false;
     if (this.audioContext) {
       this.audioContext.onstatechange = null;
     }
@@ -258,8 +311,7 @@ export class AudioCaptureManager {
     this.onAudioDataCallback = null;
     this.recordedSamples = 0;
     this.offsetTimestamp = 0;
-    this.resamplerPosition = 0;
-    this.resamplerLastSample = 0;
+    this.resamplerState = { position: 0, lastSample: 0 };
   }
 
   // Save buffered PCM as one DB record
@@ -295,33 +347,6 @@ export class AudioCaptureManager {
     savePromise.finally(() => {
       this.pendingSaves.delete(savePromise);
     });
-  }
-
-  // Downsampling using stateful linear interpolation resampler to prevent aliasing robotic buzz and boundary phase clicks
-  private downsample(
-    buffer: Float32Array,
-    inputSampleRate: number,
-    outputSampleRate: number,
-  ): Float32Array {
-    if (inputSampleRate === outputSampleRate || buffer.length === 0) return buffer;
-
-    const ratio = inputSampleRate / outputSampleRate;
-    let pos = this.resamplerPosition;
-    const output = new Float32Array(Math.ceil((buffer.length - pos) / ratio));
-    let outIdx = 0;
-
-    while (Math.floor(pos) + 1 < buffer.length) {
-      const i1 = Math.floor(pos);
-      const fraction = pos - i1;
-      const s1 = i1 < 0 ? this.resamplerLastSample : buffer[i1];
-      output[outIdx++] = s1 * (1 - fraction) + buffer[i1 + 1] * fraction;
-      pos += ratio;
-    }
-
-    this.resamplerPosition = pos - buffer.length;
-    this.resamplerLastSample = buffer[buffer.length - 1];
-
-    return output.subarray(0, outIdx);
   }
 
   // Convert Float32Array [-1.0, 1.0] to Int16Array PCM
@@ -448,23 +473,23 @@ export class AudioCaptureManager {
     const chunks = await db.getSessionAudioChunks(sessionId);
     if (chunks.length === 0) return null;
 
-    // Concatenate PCM data
-    const totalLength = chunks.reduce((acc, c) => acc + c.data.length, 0);
-    const combinedInt16 = new Int16Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunks) {
-      combinedInt16.set(chunk.data, offset);
-      offset += chunk.data.length;
-    }
-
-    // Encode to WAV (sample rate is 16000Hz mono 16-bit PCM)
-    return URL.createObjectURL(this.encodeWav(combinedInt16, 16000));
+    // Encode directly from chunks without copying the whole recording into one buffer
+    return URL.createObjectURL(
+      this.encodeWav(
+        chunks.map((c) => c.data),
+        16000,
+      ),
+    );
   }
 
-  static encodeWav(samples: Int16Array, sampleRate: number): Blob {
-    const byteLength = samples.length * 2;
-    const buffer = new ArrayBuffer(44 + byteLength);
-    const view = new DataView(buffer);
+  static encodeWav(
+    samples: Int16Array | Int16Array[],
+    sampleRate: number,
+  ): Blob {
+    const chunks = Array.isArray(samples) ? samples : [samples];
+    const byteLength = chunks.reduce((acc, c) => acc + c.byteLength, 0);
+    const header = new ArrayBuffer(44);
+    const view = new DataView(header);
     const writeStr = (offset: number, str: string) => {
       for (let i = 0; i < str.length; i++) {
         view.setUint8(offset + i, str.charCodeAt(i));
@@ -483,8 +508,18 @@ export class AudioCaptureManager {
     view.setUint16(34, 16, true); // 16-bit
     writeStr(36, "data");
     view.setUint32(40, byteLength, true);
-    new Int16Array(buffer, 44).set(samples);
-    return new Blob([buffer], { type: "audio/wav" });
+
+    const parts: BlobPart[] = [header];
+    for (const chunk of chunks) {
+      parts.push(
+        new Uint8Array(
+          chunk.buffer as ArrayBuffer,
+          chunk.byteOffset,
+          chunk.byteLength,
+        ),
+      );
+    }
+    return new Blob(parts, { type: "audio/wav" });
   }
 }
 

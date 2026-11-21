@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { useForm, Controller } from "react-hook-form";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from "react";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
-import { updateConfig } from "../lib/store/slices/configSlice";
-import { sonioxStreamClient } from "../lib/services/soniox";
-import { audioCaptureManager } from "../lib/services/audioCapture";
+import { ConfigState, updateConfig } from "../lib/store/slices/configSlice";
 
 import Button from "./atoms/Button";
 import Input from "./atoms/Input";
@@ -134,9 +138,9 @@ function ComboInput({
 const settingsFormSchema = z.object({
   sonioxApiKey: z.string().min(1, "Soniox API Key is required"),
   googleApiKey: z.string(),
-  aiModel: z.string(),
+  aiModel: z.string().trim().min(1, "Gemini model is required"),
   aiThinkingLevel: z.string(),
-  transcriptionModel: z.string(),
+  transcriptionModel: z.string().trim().min(1, "STT model is required"),
   languageHints: z
     .array(z.string())
     .min(1, "At least one language hint is required"),
@@ -156,21 +160,24 @@ type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 interface SettingsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
+  onApplyLiveConfig: (prev: ConfigState, next: ConfigState) => Promise<void>;
 }
 
 export default function SettingsDrawer({
   isOpen,
   onClose,
+  onApplyLiveConfig,
 }: SettingsDrawerProps) {
   const dispatch = useAppDispatch();
   const config = useAppSelector((state) => state.config);
-  const activeSession = useAppSelector(
-    (state) => state.persistence.activeSession,
-  );
 
   const [showSonioxKey, setShowSonioxKey] = useState(false);
   const [showGoogleKey, setShowGoogleKey] = useState(false);
-  const [hasDisplayMedia, setHasDisplayMedia] = useState(true);
+  const hasDisplayMedia = useSyncExternalStore(
+    () => () => {},
+    () => Boolean(navigator.mediaDevices?.getDisplayMedia),
+    () => true,
+  );
 
   const formValues = useMemo(
     () => ({
@@ -184,7 +191,6 @@ export default function SettingsDrawer({
     register,
     handleSubmit,
     control,
-    watch,
     formState: { errors },
     reset,
   } = useForm<SettingsFormValues>({
@@ -197,16 +203,10 @@ export default function SettingsDrawer({
     onClose();
   };
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      setHasDisplayMedia(
-        !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia),
-      );
-    }
-  }, []);
-
-  const enableTranslation = watch("enableTranslation");
-  const translationMode = watch("translationMode");
+  const [enableTranslation, translationMode] = useWatch({
+    control,
+    name: ["enableTranslation", "translationMode"],
+  });
 
   const onSubmit = (values: SettingsFormValues) => {
     const audioRouting =
@@ -214,28 +214,11 @@ export default function SettingsDrawer({
         ? "mic-only"
         : values.audioRouting;
 
+    const prevConfig = config;
     const updated = { ...values, audioRouting };
     dispatch(updateConfig(updated));
-    sonioxStreamClient.updateConfig({
-      ...updated,
-      apiKey: updated.sonioxApiKey,
-      model: updated.transcriptionModel,
-    });
-    if (
-      audioCaptureManager.isRunning &&
-      activeSession &&
-      audioRouting !== config.audioRouting
-    ) {
-      audioCaptureManager
-        .start(
-          activeSession.id,
-          audioRouting,
-          (pcmData) => sonioxStreamClient.sendAudio(pcmData),
-          audioCaptureManager.getRecordedDurationMs(),
-        )
-        .catch((err) => console.error("Audio rerouting failed:", err));
-    }
     onCloseHandler();
+    void onApplyLiveConfig(prevConfig, updated);
   };
 
   if (!isOpen) return null;

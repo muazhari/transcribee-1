@@ -1,29 +1,21 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
-import { db, Transcript } from "../lib/services/db";
+import { db } from "../lib/services/db";
 import {
   setSessions,
   setActiveSession,
   addSessionToList,
 } from "../lib/store/slices/persistenceSlice";
-import {
-  setSessionId,
-  updateTranscripts,
-  commitLiveTranscripts,
-} from "../lib/store/slices/transcriptionSlice";
-import {
-  startRecordingState,
-  stopRecordingState,
-  setStreamHealth,
-  setIsReconnecting,
-  setKeepAliveActive,
-} from "../lib/store/slices/mediaControlSlice";
+import { setSessionId } from "../lib/store/slices/transcriptionSlice";
 import { clearChatHistory } from "../lib/store/slices/chatContextSlice";
-import { audioCaptureManager } from "../lib/services/audioCapture";
-import { sonioxStreamClient } from "../lib/services/soniox";
-import { keepAliveManager } from "../lib/services/keepAlive";
+import {
+  useResizablePanels,
+  MIN_LEFT_WIDTH,
+  MIN_RIGHT_WIDTH,
+} from "../lib/hooks/useResizablePanels";
+import { useRecordingSession } from "../lib/hooks/useRecordingSession";
 
 import SessionPanel from "../components/SessionPanel";
 import SettingsDrawer from "../components/SettingsDrawer";
@@ -37,26 +29,6 @@ const MOBILE_TABS = [
   { id: "playback", label: "🔊 Playback Session" },
   { id: "chat", label: "🤖 AI Chat" },
 ] as const;
-
-const DEFAULT_LEFT_WIDTH = 320;
-const DEFAULT_RIGHT_WIDTH = 384;
-const MIN_LEFT_WIDTH = 220;
-const MIN_RIGHT_WIDTH = 260;
-const MIN_MAIN_WIDTH = 320;
-const KEYBOARD_RESIZE_STEP = 16;
-
-function clampPanelWidth(
-  value: number,
-  minWidth: number,
-  otherPanelWidth: number,
-  containerWidth: number,
-) {
-  const maxWidth =
-    containerWidth > 0
-      ? Math.max(minWidth, containerWidth - otherPanelWidth - MIN_MAIN_WIDTH)
-      : value;
-  return Math.round(Math.min(Math.max(value, minWidth), maxWidth));
-}
 
 interface ResizeHandleProps {
   label: string;
@@ -111,137 +83,26 @@ export default function Home() {
   const activeSession = useAppSelector(
     (state) => state.persistence.activeSession,
   );
-  const transcripts = useAppSelector(
-    (state) => state.transcription.transcripts,
-  );
-
   const isRecording = useAppSelector((state) => state.mediaControl.isRecording);
-
-  const config = useAppSelector((state) => state.config);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "sessions" | "transcription" | "playback" | "chat"
   >("transcription");
 
-  const layoutRef = useRef<HTMLDivElement>(null);
-  const [panelWidths, setPanelWidths] = useState({
-    left: DEFAULT_LEFT_WIDTH,
-    right: DEFAULT_RIGHT_WIDTH,
-  });
-  const [dragging, setDragging] = useState<"left" | "right" | null>(null);
-  const dragRef = useRef<{
-    side: "left" | "right";
-    startX: number;
-    startWidth: number;
-  } | null>(null);
+  const openSettings = useCallback(() => setIsSettingsOpen(true), []);
+  const { startRecording, stopRecording, applyLiveConfig } =
+    useRecordingSession(openSettings);
 
-  useEffect(() => {
-    const clampToViewport = () => {
-      const width = layoutRef.current?.clientWidth ?? 0;
-      if (width < 1024) return;
-      setPanelWidths((prev) => {
-        if (prev.left + prev.right <= width - MIN_MAIN_WIDTH) return prev;
-        const left = clampPanelWidth(
-          prev.left,
-          MIN_LEFT_WIDTH,
-          prev.right,
-          width,
-        );
-        const right = clampPanelWidth(prev.right, MIN_RIGHT_WIDTH, left, width);
-        return left === prev.left && right === prev.right
-          ? prev
-          : { left, right };
-      });
-    };
-    window.addEventListener("resize", clampToViewport);
-    return () => window.removeEventListener("resize", clampToViewport);
-  }, []);
-
-  const startResize = (
-    side: "left" | "right",
-    e: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = {
-      side,
-      startX: e.clientX,
-      startWidth: side === "left" ? panelWidths.left : panelWidths.right,
-    };
-    setDragging(side);
-  };
-
-  const handleResizeMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    const containerWidth = layoutRef.current?.clientWidth ?? 0;
-    const delta =
-      drag.side === "left" ? e.clientX - drag.startX : drag.startX - e.clientX;
-    setPanelWidths((prev) =>
-      drag.side === "left"
-        ? {
-            ...prev,
-            left: clampPanelWidth(
-              drag.startWidth + delta,
-              MIN_LEFT_WIDTH,
-              prev.right,
-              containerWidth,
-            ),
-          }
-        : {
-            ...prev,
-            right: clampPanelWidth(
-              drag.startWidth + delta,
-              MIN_RIGHT_WIDTH,
-              prev.left,
-              containerWidth,
-            ),
-          },
-    );
-  };
-
-  const stopResize = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current) return;
-    dragRef.current = null;
-    setDragging(null);
-    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    }
-  };
-
-  const handleResizeKeyDown = (
-    side: "left" | "right",
-    e: React.KeyboardEvent<HTMLDivElement>,
-  ) => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    const containerWidth = layoutRef.current?.clientWidth ?? 0;
-    const sign = (e.key === "ArrowRight" ? 1 : -1) * (side === "left" ? 1 : -1);
-    const delta = sign * KEYBOARD_RESIZE_STEP;
-    setPanelWidths((prev) =>
-      side === "left"
-        ? {
-            ...prev,
-            left: clampPanelWidth(
-              prev.left + delta,
-              MIN_LEFT_WIDTH,
-              prev.right,
-              containerWidth,
-            ),
-          }
-        : {
-            ...prev,
-            right: clampPanelWidth(
-              prev.right + delta,
-              MIN_RIGHT_WIDTH,
-              prev.left,
-              containerWidth,
-            ),
-          },
-    );
-  };
+  const {
+    layoutRef,
+    panelWidths,
+    dragging,
+    startResize,
+    handleResizeMove,
+    stopResize,
+    handleResizeKeyDown,
+  } = useResizablePanels();
 
   // Load existing sessions on mount
   useEffect(() => {
@@ -255,34 +116,6 @@ export default function Home() {
     };
     loadSessions();
   }, [dispatch]);
-
-  const pendingSave = useRef<Transcript[] | null>(null);
-  const isTranscriptsDirty = useRef(false);
-  const currentStreamOffsetRef = useRef<number>(0);
-  const flushSave = useCallback(() => {
-    const pending = pendingSave.current;
-    if (!pending) return;
-    pendingSave.current = null;
-    db.saveTranscripts(pending).catch((err) => {
-      console.error("Failed to sync transcripts to DB:", err);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!isTranscriptsDirty.current) return;
-    isTranscriptsDirty.current = false;
-    if (activeSession && transcripts.length > 0) {
-      pendingSave.current = transcripts;
-      if (!isRecording) flushSave();
-    }
-  }, [transcripts, activeSession, isRecording, flushSave]);
-
-  useEffect(() => {
-    return () => {
-      flushSave();
-      keepAliveManager.stop();
-    };
-  }, [flushSave]);
 
   const handleNewSession = async () => {
     if (isRecording) {
@@ -316,179 +149,6 @@ export default function Home() {
       console.error("Failed to rename session:", e);
     }
   };
-
-  const stopRecording = useCallback(async () => {
-    await audioCaptureManager.stop();
-    sonioxStreamClient.disconnect();
-    await keepAliveManager.stop();
-    isTranscriptsDirty.current = true;
-    dispatch(stopRecordingState());
-    dispatch(commitLiveTranscripts());
-    if (pendingSave.current) {
-      pendingSave.current = pendingSave.current.map((t) =>
-        t.isFinal ? t : { ...t, isFinal: true },
-      );
-      flushSave();
-    }
-  }, [dispatch, flushSave]);
-
-  const startRecordingConnection = useCallback(
-    (offsetTimestamp: number) => {
-      if (!activeSession) return;
-
-      currentStreamOffsetRef.current = offsetTimestamp;
-
-      // Connect to Soniox STT WebSocket
-      sonioxStreamClient.connect(
-        {
-          ...config,
-          apiKey: config.sonioxApiKey,
-          model: config.transcriptionModel,
-        },
-        {
-          // Start capture only once the socket is open so no audio is saved without also being sent
-          onOpen: () => {
-            dispatch(startRecordingState());
-            dispatch(setIsReconnecting(false));
-
-            if (!audioCaptureManager.isRunning) {
-              audioCaptureManager
-                .start(
-                  activeSession.id,
-                  config.audioRouting,
-                  (pcmData) => sonioxStreamClient.sendAudio(pcmData),
-                  offsetTimestamp,
-                )
-                .catch((err: unknown) => {
-                  console.error("Audio recording setup failed:", err);
-                  const errMsg =
-                    err instanceof Error ? err.message : String(err);
-                  alert(`Could not start recording: ${errMsg}`);
-                  sonioxStreamClient.disconnect();
-                  keepAliveManager.stop();
-                  dispatch(stopRecordingState());
-                });
-            }
-          },
-          onReconnecting: (attempt) => {
-            console.warn(
-              `[Transcribee] Background STT reconnecting attempt #${attempt}...`,
-            );
-            dispatch(setIsReconnecting(true));
-          },
-          onReconnected: (bufferedDurationMs = 0) => {
-            console.info(
-              "[Transcribee] STT WebSocket reconnected successfully! Resuming stream with updated offset.",
-            );
-            dispatch(setIsReconnecting(false));
-            dispatch(setStreamHealth("good"));
-            isTranscriptsDirty.current = true;
-            dispatch(commitLiveTranscripts());
-            // Align newly reconnected stream tokens with the start of audio sent to the new socket
-            currentStreamOffsetRef.current = Math.max(
-              0,
-              audioCaptureManager.getRecordedDurationMs() - bufferedDurationMs,
-            );
-          },
-          onClose: async () => {
-            await audioCaptureManager.stop();
-            await keepAliveManager.stop();
-            dispatch(stopRecordingState());
-          },
-          onError: (error) => {
-            dispatch(setStreamHealth("poor"));
-            if (typeof error === "string") console.warn(`Soniox error: ${error}`);
-          },
-          onTokens: (tokens) => {
-            const streamOffset = currentStreamOffsetRef.current;
-            const mappedTokens = tokens.map((t) => {
-              const start = t.start_ms ?? 0;
-              const end =
-                t.end_ms ??
-                (t.duration_ms !== undefined ? start + t.duration_ms : start);
-
-              return {
-                id: crypto.randomUUID(),
-                sessionId: activeSession.id,
-                text: t.text,
-                speakerId: t.speaker,
-                startTimestamp: start + streamOffset,
-                endTimestamp: end + streamOffset,
-                duration: end - start,
-                isFinal: t.is_final,
-                translationStatus: t.translation_status,
-                language: t.language,
-                offsetTimestamp: streamOffset,
-              };
-            });
-
-            isTranscriptsDirty.current = true;
-            dispatch(updateTranscripts(mappedTokens));
-          },
-        },
-      );
-    },
-    [activeSession, config, dispatch],
-  );
-
-  const startRecording = useCallback(async () => {
-    if (!activeSession) {
-      alert("Please load or create a session first.");
-      return;
-    }
-    if (!config.sonioxApiKey) {
-      alert("Please configure your Soniox API Key in Settings first.");
-      setIsSettingsOpen(true);
-      return;
-    }
-
-    try {
-      // Calculate timestamp offset if there is existing recording data
-      let offsetTimestamp = 0;
-      const lastChunk = await db.getLastAudioChunk(activeSession.id);
-      if (lastChunk) {
-        const lastChunkDurationMs = lastChunk.data.length / 16;
-        offsetTimestamp = lastChunk.startTimestamp + lastChunkDurationMs;
-      }
-
-      // Initialize background resilience & keep-awake features
-      await keepAliveManager.start({
-        enableWakeLock: config.enableKeepAwake,
-        onHeartbeat: () => {
-          // Non-throttled heartbeat tick from Web Worker background thread
-          flushSave();
-        },
-        onSleepWake: (suspendedDurationMs) => {
-          console.info(
-            `[Transcribee] Resumed from sleep/standby (suspended for ${suspendedDurationMs}ms). Recovering streams...`,
-          );
-          audioCaptureManager.resumeIfSuspended();
-          sonioxStreamClient.reconnectNow();
-          flushSave();
-        },
-        onStopRequested: () => {
-          stopRecording();
-        },
-        onSaveRequested: () => {
-          flushSave();
-        },
-        onAudioContextResumeRequested: () => {
-          audioCaptureManager.resumeIfSuspended();
-        },
-        onNetworkRestored: () => {
-          sonioxStreamClient.reconnectNow();
-        },
-      });
-      dispatch(setKeepAliveActive(true));
-
-      startRecordingConnection(offsetTimestamp);
-    } catch (err: unknown) {
-      console.error("Audio recording setup failed:", err);
-      const errMsg = err instanceof Error ? err.message : String(err);
-      alert(`Could not start recording: ${errMsg}`);
-      await stopRecording();
-    }
-  }, [activeSession, config, startRecordingConnection, stopRecording, flushSave, dispatch]);
 
   return (
     <main className="h-dvh w-full flex flex-col bg-neutral-900 font-sans overflow-hidden">
@@ -527,7 +187,7 @@ export default function Home() {
         >
           <SessionPanel
             onNewSession={handleNewSession}
-            openSettings={() => setIsSettingsOpen(true)}
+            openSettings={openSettings}
             onSelectSession={() => setActiveTab("transcription")}
           />
         </div>
@@ -611,6 +271,7 @@ export default function Home() {
         <SettingsDrawer
           isOpen={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
+          onApplyLiveConfig={applyLiveConfig}
         />
       </div>
     </main>

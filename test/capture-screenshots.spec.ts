@@ -1,281 +1,153 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
+import { setupMockEnvironment } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  page.on("console", (msg) => console.log(`PAGE LOG: [${msg.type()}] ${msg.text()}`));
+  page.on("console", (msg) =>
+    console.log(`PAGE LOG: [${msg.type()}] ${msg.text()}`),
+  );
   page.on("pageerror", (err) => console.error("PAGE ERROR:", err.message));
 
-  // Set up mock window variables and functions
-  await page.addInitScript(() => {
-    (window as any).__PLAYWRIGHT_TEST__ = true;
-
-    // Mock WebSocket duplex stream
-    class MockWebSocket extends EventTarget {
-      static OPEN = 1;
-      readyState = 0;
-      binaryType = "blob";
-      url = "";
-      onopen: any = null;
-      onmessage: any = null;
-      onerror: any = null;
-      onclose: any = null;
-
-      constructor(url: string) {
-        super();
-        this.url = url;
-        setTimeout(() => {
-          this.readyState = 1;
-          const openEvent = new Event("open");
-          this.dispatchEvent(openEvent);
-          if (this.onopen) this.onopen(openEvent);
-        }, 50);
-      }
-
-      send(data: any) {
-        if (typeof data === "string") {
-          // It's the config message
-          setTimeout(() => {
-            // Push mock tokens
-            const response = {
-              tokens: [
-                {
-                  text: "Welcome",
-                  start_ms: 100,
-                  duration_ms: 200,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " to",
-                  start_ms: 300,
-                  duration_ms: 150,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " the",
-                  start_ms: 450,
-                  duration_ms: 100,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " live",
-                  start_ms: 550,
-                  duration_ms: 150,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " demonstration",
-                  start_ms: 700,
-                  duration_ms: 400,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " of",
-                  start_ms: 1100,
-                  duration_ms: 100,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " Transcribee",
-                  start_ms: 1200,
-                  duration_ms: 300,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " translation",
-                  start_ms: 1500,
-                  duration_ms: 350,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " capabilities.",
-                  start_ms: 1850,
-                  duration_ms: 400,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: "Bienvenidos a la demostración en vivo de las capacidades de traducción de Transcribee.",
-                  start_ms: 100,
-                  duration_ms: 2150,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "translation",
-                  language: "es",
-                },
-                {
-                  text: " We",
-                  start_ms: 2500,
-                  duration_ms: 200,
-                  is_final: false,
-                  speaker: "2",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " are",
-                  start_ms: 2700,
-                  duration_ms: 150,
-                  is_final: false,
-                  speaker: "2",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " translating",
-                  start_ms: 2850,
-                  duration_ms: 300,
-                  is_final: false,
-                  speaker: "2",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " real-time",
-                  start_ms: 3150,
-                  duration_ms: 250,
-                  is_final: false,
-                  speaker: "2",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: " audio.",
-                  start_ms: 3400,
-                  duration_ms: 200,
-                  is_final: false,
-                  speaker: "2",
-                  translation_status: "original",
-                  language: "en",
-                },
-              ],
-            };
-            const messageEvent = new MessageEvent("message", {
-              data: JSON.stringify(response),
-            });
-            this.dispatchEvent(messageEvent);
-            if (this.onmessage) this.onmessage(messageEvent);
-          }, 150);
-        }
-      }
-
-      close() {
-        this.readyState = 3;
-        const closeEvent = new Event("close");
-        this.dispatchEvent(closeEvent);
-        if (this.onclose) this.onclose(closeEvent);
-      }
-    }
-
-    (window as any).WebSocket = MockWebSocket;
-
-    // Mock getUserMedia & getDisplayMedia
-    const mockTrack = {
-      stop: () => {},
-      enabled: true,
-    };
-    const mockStream = {
-      getTracks: () => [mockTrack],
-      getAudioTracks: () => [mockTrack],
-      getVideoTracks: () => [mockTrack],
-    };
-
-    if (!window.navigator.mediaDevices) {
-      Object.defineProperty(window.navigator, "mediaDevices", {
-        value: {},
-        writable: true,
-        configurable: true,
-      });
-    }
-    (window.navigator.mediaDevices as any).getUserMedia = async () => mockStream;
-    (window.navigator.mediaDevices as any).getDisplayMedia = async () => mockStream;
-
-    // Mock AudioContext & AudioWorklet
-    class MockAudioContext {
-      state = "running";
-      sampleRate = 16000;
-      destination = {};
-      audioWorklet = {
-        addModule: async () => Promise.resolve(),
-      };
-
-      createMediaStreamSource() {
-        return {
-          connect: () => {},
-          disconnect: () => {},
-        };
-      }
-      close() {
-        this.state = "closed";
-        return Promise.resolve();
-      }
-      createBuffer() {
-        return {
-          copyToChannel: () => {},
-          duration: 1,
-          length: 16000,
-          sampleRate: 16000,
-          numberOfChannels: 1,
-        };
-      }
-      createBufferSource() {
-        return {
-          connect: () => {},
-          start: () => {},
-        };
-      }
-    }
-    class MockAudioWorkletNode {
-      port: any = {
-        _onmessage: null,
-        set onmessage(val: any) {
-          this._onmessage = val;
-          if (val) {
-            setTimeout(() => {
-              if (this._onmessage) {
-                // 4 seconds of PCM audio (64,000 samples at 16kHz) matching mock transcript length
-                this._onmessage({ data: new Float32Array(64000) });
-              }
-            }, 50);
-          }
-        },
-        get onmessage() {
-          return this._onmessage;
-        },
-      };
-      connect() {}
-      disconnect() {}
-    }
-    (window as any).AudioContext = MockAudioContext;
-    (window as any).webkitAudioContext = MockAudioContext;
-    (window as any).AudioWorkletNode = MockAudioWorkletNode;
+  await setupMockEnvironment(page, {
+    audioSamplesPerRecording: 64000,
+    initialTokens: [
+      {
+        text: "Welcome",
+        start_ms: 100,
+        duration_ms: 200,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " to",
+        start_ms: 300,
+        duration_ms: 150,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " the",
+        start_ms: 450,
+        duration_ms: 100,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " live",
+        start_ms: 550,
+        duration_ms: 150,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " demonstration",
+        start_ms: 700,
+        duration_ms: 400,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " of",
+        start_ms: 1100,
+        duration_ms: 100,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " Transcribee",
+        start_ms: 1200,
+        duration_ms: 300,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " translation",
+        start_ms: 1500,
+        duration_ms: 350,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " capabilities.",
+        start_ms: 1850,
+        duration_ms: 400,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: "Bienvenidos a la demostración en vivo de las capacidades de traducción de Transcribee.",
+        start_ms: 100,
+        duration_ms: 2150,
+        is_final: true,
+        speaker: "1",
+        translation_status: "translation",
+        language: "es",
+      },
+      {
+        text: " We",
+        start_ms: 2500,
+        duration_ms: 200,
+        is_final: false,
+        speaker: "2",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " are",
+        start_ms: 2700,
+        duration_ms: 150,
+        is_final: false,
+        speaker: "2",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " translating",
+        start_ms: 2850,
+        duration_ms: 300,
+        is_final: false,
+        speaker: "2",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " real-time",
+        start_ms: 3150,
+        duration_ms: 250,
+        is_final: false,
+        speaker: "2",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " audio.",
+        start_ms: 3400,
+        duration_ms: 200,
+        is_final: false,
+        speaker: "2",
+        translation_status: "original",
+        language: "en",
+      },
+    ],
   });
 });
 
@@ -320,11 +192,8 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
 
   // Rename session to something professional
   const sessionInput = page.locator('input[placeholder^="Session -"]');
-  await sessionInput.click();
-  await page.keyboard.press("Control+A");
-  await page.keyboard.press("Backspace");
-  await page.keyboard.type("Q3 Product & Architecture Sync");
-  await page.keyboard.press("Enter");
+  await sessionInput.fill("Q3 Product & Architecture Sync");
+  await expect(sessionInput).toHaveValue("Q3 Product & Architecture Sync");
 
   // 4. Start recording and wait for mock tokens
   await page.click('button:has-text("Start Recording")');
@@ -374,12 +243,10 @@ test("Capture screenshots of Transcribee layout and flows", async ({ page }) => 
   });
   console.log("Captured Playback Session screenshot.");
 
-  // 7. Capture mobile layout
+  // 7. Capture mobile layout (with active session loaded)
   await page.setViewportSize({ width: 375, height: 812 });
-  await page.goto("/", { waitUntil: "load" });
-  await page.locator('button:has-text("Live Session")').first().waitFor({ state: "visible", timeout: 30000 });
-  
-  // Show active mobile tab "Live Session" with the content
+  await page.locator('button:has-text("Live Session")').filter({ visible: true }).first().click();
+  await expect(page.locator("span:has-text('Speaker 1')").first()).toBeVisible({ timeout: 5000 });
   await page.waitForTimeout(500);
   await page.screenshot({
     path: path.join(screenshotDir, "mobile_view.png"),

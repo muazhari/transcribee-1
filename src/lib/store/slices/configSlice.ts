@@ -18,7 +18,7 @@ export interface ConfigState {
   enableKeepAwake: boolean;
 }
 
-const initialState: ConfigState = {
+export const initialConfigState: ConfigState = {
   sonioxApiKey: "",
   googleApiKey: "",
   aiModel: "gemini-4-hydrogen",
@@ -38,7 +38,7 @@ const initialState: ConfigState = {
 
 export const configSlice = createSlice({
   name: "config",
-  initialState,
+  initialState: initialConfigState,
   reducers: {
     updateConfig: (state, action: PayloadAction<Partial<ConfigState>>) => {
       return { ...state, ...action.payload };

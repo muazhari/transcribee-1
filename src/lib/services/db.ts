@@ -2,7 +2,6 @@ export interface Session {
   id: string;
   createdAt: Date;
   title: string | null;
-  audioBlobPath?: string;
 }
 
 export interface Transcript {
@@ -42,6 +41,7 @@ export const MAX_AUDIO_CHUNK_MS = 2000;
 
 class TranscribeeDB {
   private dbPromise: Promise<IDBDatabase> | null = null;
+  private savedTranscriptsBySession = new Map<string, Transcript[]>();
 
   private getDB(): Promise<IDBDatabase> {
     if (typeof window === "undefined") {
@@ -73,8 +73,25 @@ class TranscribeeDB {
         }
       };
 
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        db.onclose = () => {
+          this.dbPromise = null;
+        };
+        db.onversionchange = () => {
+          db.close();
+          this.dbPromise = null;
+        };
+        resolve(db);
+      };
+      request.onerror = () => {
+        this.dbPromise = null;
+        reject(request.error);
+      };
+      request.onblocked = () => {
+        this.dbPromise = null;
+        reject(new Error("IndexedDB open was blocked by another tab"));
+      };
     });
 
     return this.dbPromise;
@@ -128,8 +145,12 @@ class TranscribeeDB {
       this.deleteByIndex(tx.objectStore("transcripts"), "sessionId", id);
       this.deleteByIndex(tx.objectStore("chatPairs"), "sessionId", id);
       this.deleteByIndex(tx.objectStore("audioChunks"), "sessionId", id);
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        this.savedTranscriptsBySession.delete(id);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error("Delete session transaction aborted"));
     });
   }
 
@@ -137,22 +158,47 @@ class TranscribeeDB {
   async saveTranscripts(transcripts: Transcript[]): Promise<void> {
     if (transcripts.length === 0) return;
     const sessionId = transcripts[0].sessionId;
+    const prev = this.savedTranscriptsBySession.get(sessionId);
+    const nextIds = new Set(transcripts.map((t) => t.id));
+
+    if (prev) {
+      const prevById = new Map(prev.map((t) => [t.id, t]));
+      const toPut = transcripts.filter((t) => prevById.get(t.id) !== t);
+      const toDelete = prev.filter((p) => !nextIds.has(p.id)).map((p) => p.id);
+      if (toPut.length === 0 && toDelete.length === 0) return;
+
+      const db = await this.getDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction("transcripts", "readwrite");
+        const store = tx.objectStore("transcripts");
+        for (const id of toDelete) store.delete(id);
+        for (const t of toPut) store.put(t);
+        tx.oncomplete = () => {
+          this.savedTranscriptsBySession.set(sessionId, transcripts);
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error ?? new Error("Save transcripts transaction aborted"));
+      });
+    }
+
     const db = await this.getDB();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("transcripts", "readwrite");
       const store = tx.objectStore("transcripts");
-      const req = store.index("sessionId").openCursor(IDBKeyRange.only(sessionId));
-      req.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest<IDBCursorWithValue | null>).result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        } else {
-          transcripts.forEach((t) => store.put(t));
+      const keysReq = store.index("sessionId").getAllKeys(IDBKeyRange.only(sessionId));
+      keysReq.onsuccess = () => {
+        for (const key of keysReq.result) {
+          if (!nextIds.has(String(key))) store.delete(key);
         }
+        for (const t of transcripts) store.put(t);
       };
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        this.savedTranscriptsBySession.set(sessionId, transcripts);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error("Save transcripts transaction aborted"));
     });
   }
 
@@ -179,6 +225,7 @@ class TranscribeeDB {
       this.deleteByIndex(tx.objectStore("chatPairs"), "sessionId", sessionId);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error("Clear chat pairs transaction aborted"));
     });
   }
 

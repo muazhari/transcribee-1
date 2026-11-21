@@ -45,6 +45,11 @@ export class SonioxStreamClient {
   connect(config: SonioxConfig, callbacks: SonioxCallbacks): void {
     if (typeof window === "undefined") return;
 
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
     this.isIntentionallyClosed = false;
     this.currentConfig = config;
     this.callbacks = callbacks;
@@ -139,6 +144,10 @@ export class SonioxStreamClient {
           try {
             const response = JSON.parse(event.data);
             if (response.error_code) {
+              const code = Number(response.error_code);
+              if (code >= 400 && code < 500) {
+                this.isIntentionallyClosed = true;
+              }
               this.callbacks?.onError?.(
                 `${response.error_code}: ${response.error_message ?? "Unknown Soniox error"}`,
               );
@@ -190,6 +199,10 @@ export class SonioxStreamClient {
       };
     } catch (err) {
       console.error("[Soniox] Failed to initiate WebSocket connection:", err);
+      this.callbacks?.onError?.(
+        err instanceof Error ? err.message : String(err),
+      );
+      this.callbacks?.onClose?.();
     }
   }
 
@@ -197,10 +210,11 @@ export class SonioxStreamClient {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(data as unknown as BufferSource);
     } else if (!this.isIntentionallyClosed) {
-      // Buffer incoming audio if socket is temporarily reconnecting
-      if (this.audioBufferQueue.length < this.maxBufferQueueSize) {
-        this.audioBufferQueue.push(data);
+      // Keep the most recent ~25s so reconnected audio stays aligned with live time
+      if (this.audioBufferQueue.length >= this.maxBufferQueueSize) {
+        this.audioBufferQueue.shift();
       }
+      this.audioBufferQueue.push(data);
     }
   }
 

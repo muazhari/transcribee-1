@@ -40,10 +40,9 @@ test.describe("Transcribee Core E2E Suite", () => {
 
     await expect
       .poll(async () => {
-        return page.evaluate(() => {
-          const root = JSON.parse(localStorage.getItem("persist:root") || "{}");
-          return JSON.parse(root.config || "{}");
-        });
+        return page.evaluate(() =>
+          JSON.parse(localStorage.getItem("transcribee:config") || "{}"),
+        );
       })
       .toMatchObject({
         sonioxApiKey: "test-soniox-key-xyz",

@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
-import { setupMockEnvironment } from "./helpers";
+import { setupMockEnvironment, seedDatabase } from "./helpers";
 
 test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
   test("alerts when Google API key is missing upon sending a chat query", async ({
@@ -85,21 +85,16 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
     await page.goto("/");
 
     // 3,500,000 chars -> ~875,000 tokens (87.5% of 1,000,000 token limit for gemini-4-hydrogen)
-    await page.evaluate(async () => {
-      const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const req = indexedDB.open("TranscribeeDB", 1);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(["sessions", "transcripts"], "readwrite");
-        tx.objectStore("sessions").put({
+    await seedDatabase(page, {
+      sessions: [
+        {
           id: "sess-85",
-          createdAt: new Date("2026-01-01T10:00:00.000Z"),
+          createdAt: "2026-01-01T10:00:00.000Z",
           title: "85 Percent Capacity Session",
-          audioBlobPath: "",
-        });
-        tx.objectStore("transcripts").put({
+        },
+      ],
+      transcripts: [
+        {
           id: "t-85",
           sessionId: "sess-85",
           speakerId: "1",
@@ -109,11 +104,8 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
           endTimestamp: 1000,
           duration: 1000,
           language: "en",
-        });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-      db.close();
+        },
+      ],
     });
     await page.reload();
 
@@ -133,21 +125,16 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
     await page.goto("/");
 
     // Two turns totaling 4,200,000 chars -> ~1,050,000 tokens (105% of 1,000,000 limit)
-    await page.evaluate(async () => {
-      const db = await new Promise<IDBDatabase>((resolve, reject) => {
-        const req = indexedDB.open("TranscribeeDB", 1);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-      });
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(["sessions", "transcripts"], "readwrite");
-        tx.objectStore("sessions").put({
+    await seedDatabase(page, {
+      sessions: [
+        {
           id: "sess-100",
-          createdAt: new Date("2026-01-01T10:00:00.000Z"),
+          createdAt: "2026-01-01T10:00:00.000Z",
           title: "100 Percent Capacity Session",
-          audioBlobPath: "",
-        });
-        tx.objectStore("transcripts").put({
+        },
+      ],
+      transcripts: [
+        {
           id: "t-100-1",
           sessionId: "sess-100",
           speakerId: "1",
@@ -157,8 +144,8 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
           endTimestamp: 1000,
           duration: 1000,
           language: "en",
-        });
-        tx.objectStore("transcripts").put({
+        },
+        {
           id: "t-100-2",
           sessionId: "sess-100",
           speakerId: "2",
@@ -168,11 +155,8 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
           endTimestamp: 2000,
           duration: 1000,
           language: "en",
-        });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
-      });
-      db.close();
+        },
+      ],
     });
     await page.reload();
 
@@ -185,7 +169,7 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
       ),
     ).toBeVisible();
 
-    // Verify chat still works with FIFO truncation active
+    // Verify chat still works with FIFO truncation active and actually drops Speaker 1 from the prompt
     await page
       .getByPlaceholder("Type your question...")
       .fill("What did Speaker 2 say?");
@@ -193,5 +177,51 @@ test.describe("AI Chat Assistant & Context Token Guardrails Suite", () => {
     await expect(
       page.getByText("This is a mock response from Gemini", { exact: false }),
     ).toBeVisible();
+
+    const sentSystemPrompt = await page.evaluate(() => {
+      const req = (window as any).__geminiRequests?.[0];
+      return req?.systemInstruction?.parts?.[0]?.text ?? "";
+    });
+    expect(sentSystemPrompt).not.toContain("Speaker 1:");
+    expect(sentSystemPrompt).toContain("Speaker 2:");
+  });
+
+  test("cancels in-flight reply when Clear is clicked mid-stream without saving back to IndexedDB", async ({
+    page,
+  }) => {
+    await setupMockEnvironment(page, { seedConfig: true });
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    await page
+      .getByPlaceholder("Type your question...")
+      .fill("Long streaming question");
+    await page.getByRole("button", { name: "Send" }).click();
+
+    await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible();
+    await page.getByRole("button", { name: "Clear" }).click();
+
+    await expect(
+      page.getByText("Ask questions about this transcript"),
+    ).toBeVisible();
+    await page.waitForTimeout(700);
+    await expect(
+      page.getByText("This is a mock response from Gemini", { exact: false }),
+    ).toHaveCount(0);
+
+    const savedCount = await page.evaluate(async () => {
+      const req = indexedDB.open("TranscribeeDB", 1);
+      const db = await new Promise<IDBDatabase>((res) => {
+        req.onsuccess = () => res(req.result);
+      });
+      const tx = db.transaction("chatPairs", "readonly");
+      const count = await new Promise<number>((res) => {
+        const r = tx.objectStore("chatPairs").count();
+        r.onsuccess = () => res(r.result);
+      });
+      db.close();
+      return count;
+    });
+    expect(savedCount).toBe(0);
   });
 });

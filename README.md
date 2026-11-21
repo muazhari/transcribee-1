@@ -1,79 +1,71 @@
 # Transcribee 🐝
 
-> **Local-First, Real-Time Multilingual Code-switching Audio Transcriber, Diarization, Translation, Playback, & AI Chat.**
+> **Local-first, real-time multilingual transcription, speaker diarization, live translation, synchronized playback, and AI chat — running entirely in your browser.**
 
-Transcribee is a browser-only web application orchestrating real-time audio streaming, speaker diarization, live translation, audio scrubbing playback, LLM chat with FIFO context management, and offline persistence—completely client-side with zero intermediary backend servers.
+No intermediary backend required. Your browser connects directly to Soniox for real-time speech-to-text and Google Gemini for transcript-aware chat, while storing all sessions, audio, and history locally.
 
 ---
 
 ## 📸 Interface Preview
 
-| View | Description |
+| View | Highlights |
 | :--- | :--- |
-| **Desktop Workspace**<br>![Desktop Workspace](public/screenshots/main_app.png) | Unified layout featuring saved session management, live transcript stream with speaker indicators, and dynamic AI chat drawer. |
-| **Transcription & Translation**<br>![Live Transcription](public/screenshots/transcription.png) | High-frequency token streaming with finalized text refinement, concurrent translation tracks, and click-to-play audio scrubbing. |
-| **Audio Playback & Scrubbing**<br>![Audio Playback](public/screenshots/playback.png) | Dedicated playback session view with token scrubbing, speed controls (0.5x–2.0x), timeline seeking, and speaker synchronization. |
-| **System Configurations**<br>![System Configurations](public/screenshots/settings.png) | Slide-out drawer for Soniox and Google Gemini API keys, model selections, audio routing modes, and language hints. |
-| **Mobile-Responsive Layout**<br>![Mobile Interface](public/screenshots/mobile_view.png) | Responsive viewport navigation collapsing auxiliary panels into fluid tabs focused on live transcription. |
+| **Desktop Workspace**<br>![Desktop Workspace](public/screenshots/main_app.png) | Resizable three-pane layout with session history, live/playback tabs, and streaming AI chat. |
+| **Live Transcription & Translation**<br>![Live Transcription](public/screenshots/transcription.png) | Diarized speaker blocks, concurrent translations, live stream status, and click-to-play word audio. |
+| **Playback & Scrubbing**<br>![Audio Playback](public/screenshots/playback.png) | Full-session WAV player with 0.5x–2.0x speed, ±5s skip, timeline scrubbing, and auto-scrolling synced transcripts. |
+| **System Configurations**<br>![System Configurations](public/screenshots/settings.png) | Slide-out drawer for API keys, Gemini & STT models, thinking level, 60 language hints, translation modes, audio routing, and keep-awake settings. |
+| **Mobile Layout**<br>![Mobile Interface](public/screenshots/mobile_view.png) | Responsive tabbed navigation across Sessions, Live Session, Playback Session, and AI Chat. |
 
 ---
 
-## ⚡ Core Features
+## ⚡ Features
 
-- **Audio Capture & Loopback Mixing:** Captures microphone (`getUserMedia`) and system audio (`getDisplayMedia`), mixing to 16kHz/44.1kHz linear PCM mono stream or routing single tracks.
-- **Soniox Live STT Client:** Full-duplex WebSocket client streaming real-time tokens, speaker diarization IDs, and translation tracks directly to Redux store.
-- **Token-Level Audio Scrubbing:** Correlates transcribed words to exact audio offsets (`start_ms`, `duration_ms`) for split-second audio playback from local cache.
-- **Smart FIFO Context Manager:** Client-side token counting with visual warning at **85%** capacity and automated First-In, First-Out truncation at **100%** preserving speaker turn boundaries.
-- **In-Browser Gemini Chat:** Context-aware assistant via LangChain JS streaming responses against accumulated session transcripts.
-- **Local-First Persistence:** Complete offline persistence for audio buffers, transcripts, translations, and chat histories via IndexedDB / OPFS.
+- **Flexible Audio Capture:** Captures microphone (`getUserMedia`), system audio (`getDisplayMedia`), or both mixed via `AudioWorklet`, downsampled to 16 kHz mono 16-bit PCM with live mid-recording rerouting.
+- **Live Multilingual STT & Translation:** Connects directly to Soniox WebSocket (`wss://stt-rt.soniox.com/transcribe-websocket`) with speaker diarization, language identification, endpoint detection, 60 language hints, and one-way or two-way translation.
+- **Background Resilience:** Screen Wake Lock, Media Session lock-screen controls, inaudible audio keep-alive, and a Web Worker sleep-wake detector paired with automatic WebSocket reconnection (~30s audio buffer).
+- **Synchronized Playback & Scrubbing:** Click any word or timestamp to replay that audio slice in Live view, or switch to Playback view for full WAV playback (0.5x–2.0x speed, ±5s skip, volume, synced scroll).
+- **Context-Aware Gemini Chat:** Streams answers in-browser via `@langchain/google-genai` with configurable model & thinking level, Markdown/KaTeX rendering, cancel support, and a token meter (warns at **85%**, non-destructively drops oldest prompt turns at **100%**).
+- **Local-First Storage & Export:** Persists sessions, transcripts, chats, and 1s PCM audio chunks in **IndexedDB** (with settings in `localStorage`), and exports **`.wav`**, **`.srt`**, and **`.json`**.
 
 ---
 
-## 🛠️ Architecture Overview
+## 🛠️ Architecture
 
 ```mermaid
 flowchart TD
-    Audio["Web Audio API Processing<br/>(Mic + Speaker Loopback)"]
-    RTK["RTK Global State Engine"]
-    Soniox["Soniox Live STT Agent<br/>(WebSocket Engine)"]
-    Gemini["Gemini Chat Agent<br/>(LangChain JS Client)"]
-    Persistence["Local-First Persistence Agent<br/>(IndexedDB / OPFS)"]
+    Audio["Web Audio API<br/>(Mic / Speaker AudioWorklet → 16 kHz PCM)"]
+    Soniox["Soniox Live STT<br/>(WebSocket + Auto-Reconnect)"]
+    RTK["Redux Toolkit Store<br/>(App State & localStorage Config)"]
+    Gemini["Gemini Chat<br/>(@langchain/google-genai)"]
+    DB["IndexedDB<br/>(Sessions, Transcripts, Chats & PCM Chunks)"]
 
-    Audio -->|"Raw Audio Buffer (PCM)"| RTK
-    RTK -->|"Audio Stream"| Soniox
-    Soniox -->|"Real-Time Tokens & Diarization"| RTK
-    RTK -->|"Context Stream"| Gemini
-    Gemini -->|"Streamed Tokens"| RTK
-    RTK -->|"Structured Payload & Audio Blobs"| Persistence
+    Audio -->|"16 kHz PCM Stream"| Soniox
+    Audio -->|"1s PCM Chunks"| DB
+    Soniox -->|"Tokens, Speakers & Translations"| RTK
+    RTK -->|"Transcript Context"| Gemini
+    Gemini -->|"Streamed Markdown / LaTeX"| RTK
+    RTK <-->|"Sessions, Transcripts & Chats"| DB
 ```
+
+**Tech Stack:** Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Redux Toolkit · Zod · React Hook Form · LangChain (`@langchain/google-genai`) · IndexedDB · Playwright
 
 ---
 
 ## 🚀 Quickstart
 
 ### Prerequisites
-- Node.js (v18+)
-- npm or bun
+- **Node.js 20.9+** and/or **Bun**
+- A **Soniox API key** (for live transcription) and optionally a **Google AI API key** (for AI chat), configured in the in-app **⚙️ Settings** drawer
 
-### 1. Install Dependencies
+### Install & Run
 ```bash
-npm install
-# or
-bun install
+bun install      # or: npm install
+bun run dev      # or: npm run dev
 ```
+Open [http://localhost:3000](http://localhost:3000), open **⚙️ Settings** to add your API keys, and start a session.
 
-### 2. Start Development Server
+### Run End-to-End Tests
+Playwright tests cover recording, transcription, translation, playback, export, chat, resizable panels, background keep-alive, mobile layout, and persistence:
 ```bash
-npm run dev
-# or
-bun run dev
-```
-Open [http://localhost:3000](http://localhost:3000).
-
-### 3. Running End-to-End Tests
-Playwright validates full user workflows (recording, transcription, translation, playback, AI chat, persistence):
-```bash
-npm test
-# or
-bun test
+bun run test     # Playwright webServer uses Bun to build & serve the app
 ```

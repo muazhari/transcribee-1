@@ -34,6 +34,8 @@ export interface SetupMockOptions {
   seedConfig?: boolean | MockConfigOverrides;
   autoEmitTokens?: boolean;
   initialTokens?: MockToken[];
+  reconnectTokens?: MockToken[];
+  sampleRate?: number;
   audioSamplesPerRecording?: number;
   disableDisplayMedia?: boolean;
   displayMediaNoAudio?: boolean;
@@ -77,6 +79,8 @@ export async function setupMockEnvironment(
     seedConfig = false,
     autoEmitTokens = true,
     initialTokens = DEFAULT_MOCK_TOKENS,
+    reconnectTokens,
+    sampleRate = 16000,
     audioSamplesPerRecording = 32000, // 2.0s at 16kHz -> auto-flushes to IndexedDB
     disableDisplayMedia = false,
     displayMediaNoAudio = false,
@@ -87,19 +91,24 @@ export async function setupMockEnvironment(
       seedCfg,
       autoEmit,
       tokens,
+      reconnTokens,
+      ctxSampleRate,
       sampleCount,
       noDisplayMedia,
       noDisplayAudio,
     }) => {
-      (window as any).__PLAYWRIGHT_TEST__ = true;
       (window as any).__sentWsConfigs = [];
       (window as any).__playedAudioBuffers = [];
+      (window as any).__geminiRequests = [];
       (window as any).__userMediaCalls = 0;
       (window as any).__displayMediaCalls = 0;
+      (window as any).__wakeLockRequested = 0;
+      (window as any).__wakeLockReleased = 0;
+      (window as any).__wsConnectedCount = 0;
       (window as any).__mockSonioxTokens = tokens;
 
-      // Seed redux-persist config once per browser context
-      if (seedCfg && !window.localStorage.getItem("persist:root")) {
+      // Seed localStorage config once per browser context
+      if (seedCfg && !window.localStorage.getItem("transcribee:config")) {
         const defaultConfig = {
           sonioxApiKey: "test-soniox-key-xyz",
           googleApiKey: "test-gemini-key-xyz",
@@ -119,13 +128,97 @@ export async function setupMockEnvironment(
           ...(typeof seedCfg === "object" ? seedCfg : {}),
         };
         window.localStorage.setItem(
-          "persist:root",
-          JSON.stringify({
-            config: JSON.stringify(defaultConfig),
-            _persist: JSON.stringify({ version: -1, rehydrated: true }),
-          }),
+          "transcribee:config",
+          JSON.stringify(defaultConfig),
         );
       }
+
+      // Mock Gemini SSE endpoint so real askGeminiStream + LangChain streaming run end-to-end
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url;
+
+        if (url.includes("generativelanguage.googleapis.com")) {
+          if (init?.body && typeof init.body === "string") {
+            try {
+              (window as any).__geminiRequests.push(JSON.parse(init.body));
+            } catch {
+              // ignore unparseable body
+            }
+          }
+
+          const signal = init?.signal;
+          const words =
+            "This is a mock response from Gemini based on the transcript.".split(
+              " ",
+            );
+          const encoder = new TextEncoder();
+
+          const stream = new ReadableStream({
+            start(controller) {
+              let idx = 0;
+              let timer: ReturnType<typeof setTimeout> | null = null;
+              const onAbort = () => {
+                if (timer) clearTimeout(timer);
+                controller.error(new DOMException("Aborted", "AbortError"));
+              };
+              if (signal?.aborted) {
+                onAbort();
+                return;
+              }
+              signal?.addEventListener("abort", onAbort, { once: true });
+
+              const pushNext = () => {
+                if (signal?.aborted) return;
+                if (idx >= words.length) {
+                  signal?.removeEventListener("abort", onAbort);
+                  controller.close();
+                  return;
+                }
+                const text =
+                  idx === words.length - 1 ? words[idx] : words[idx] + " ";
+                // Include a thinking + text mixed chunk on the first packet to cover thinkingConfig responses
+                const parts =
+                  idx === 0
+                    ? [
+                        { thought: true, text: "Analyzing transcript..." },
+                        { text },
+                      ]
+                    : [{ text }];
+                const payload = {
+                  candidates: [
+                    {
+                      content: { role: "model", parts },
+                      ...(idx === words.length - 1
+                        ? { finishReason: "STOP" }
+                        : {}),
+                    },
+                  ],
+                };
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
+                );
+                idx++;
+                timer = setTimeout(pushNext, 45);
+              };
+
+              timer = setTimeout(pushNext, 45);
+            },
+          });
+
+          return new Response(stream, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        }
+
+        return originalFetch(input, init);
+      };
 
       // Mock WakeLock to avoid console permission warnings
       class MockWakeLockSentinel extends EventTarget {
@@ -133,12 +226,16 @@ export async function setupMockEnvironment(
         type = "screen";
         async release() {
           this.released = true;
+          (window as any).__wakeLockReleased++;
           this.dispatchEvent(new Event("release"));
         }
       }
       Object.defineProperty(navigator, "wakeLock", {
         value: {
-          request: async () => new MockWakeLockSentinel(),
+          request: async () => {
+            (window as any).__wakeLockRequested++;
+            return new MockWakeLockSentinel();
+          },
         },
         configurable: true,
         writable: true,
@@ -163,13 +260,14 @@ export async function setupMockEnvironment(
           super();
           this.url = url;
           (window as any).__lastWs = this;
+          (window as any).__wsConnectedCount++;
           setTimeout(() => {
             if (this.readyState !== 0) return;
             this.readyState = 1;
             const openEvent = new Event("open");
             this.dispatchEvent(openEvent);
             if (this.onopen) this.onopen(openEvent);
-          }, 10);
+          }, 15);
         }
 
         send(data: any) {
@@ -182,8 +280,13 @@ export async function setupMockEnvironment(
             if (autoEmit) {
               setTimeout(() => {
                 if (this.readyState !== 1) return;
-                this.pushTokens((window as any).__mockSonioxTokens);
-              }, 15);
+                const count = (window as any).__wsConnectedCount || 1;
+                const batch =
+                  count > 1 && reconnTokens
+                    ? reconnTokens
+                    : (window as any).__mockSonioxTokens;
+                this.pushTokens(batch);
+              }, 20);
             }
           }
         }
@@ -207,6 +310,17 @@ export async function setupMockEnvironment(
           if (this.onmessage) this.onmessage(messageEvent);
         }
 
+        simulateDrop() {
+          this.readyState = 3;
+          const closeEvent = new CloseEvent("close", {
+            code: 1006,
+            reason: "Connection dropped unexpectedly",
+            wasClean: false,
+          });
+          this.dispatchEvent(closeEvent);
+          if (this.onclose) this.onclose(closeEvent);
+        }
+
         close() {
           this.readyState = 3;
           const closeEvent = new Event("close");
@@ -218,17 +332,11 @@ export async function setupMockEnvironment(
       (window as any).WebSocket = MockWebSocket;
 
       // Mock mediaDevices
-      const mockTrack = { stop: () => {}, enabled: true };
-      const mockStream = {
-        getTracks: () => [mockTrack],
-        getAudioTracks: () => [mockTrack],
-        getVideoTracks: () => [mockTrack],
-      };
-      const mockNoAudioStream = {
-        getTracks: () => [mockTrack],
-        getAudioTracks: () => [],
-        getVideoTracks: () => [mockTrack],
-      };
+      const createMockTrack = () => ({
+        stop: () => {},
+        enabled: true,
+        onended: null as any,
+      });
 
       if (!window.navigator.mediaDevices) {
         Object.defineProperty(window.navigator, "mediaDevices", {
@@ -243,26 +351,48 @@ export async function setupMockEnvironment(
       ];
       (window.navigator.mediaDevices as any).getUserMedia = async () => {
         (window as any).__userMediaCalls++;
-        return mockStream;
+        const track = createMockTrack();
+        (window as any).__lastMicTrack = track;
+        return {
+          getTracks: () => [track],
+          getAudioTracks: () => [track],
+          getVideoTracks: () => [],
+        };
       };
       if (noDisplayMedia) {
         delete (window.navigator.mediaDevices as any).getDisplayMedia;
       } else {
         (window.navigator.mediaDevices as any).getDisplayMedia = async () => {
           (window as any).__displayMediaCalls++;
-          return noDisplayAudio ? mockNoAudioStream : mockStream;
+          const audioTrack = createMockTrack();
+          const videoTrack = createMockTrack();
+          (window as any).__lastSpeakerTrack = audioTrack;
+          return noDisplayAudio
+            ? {
+                getTracks: () => [videoTrack],
+                getAudioTracks: () => [],
+                getVideoTracks: () => [videoTrack],
+              }
+            : {
+                getTracks: () => [audioTrack, videoTrack],
+                getAudioTracks: () => [audioTrack],
+                getVideoTracks: () => [videoTrack],
+              };
         };
       }
 
       // Mock AudioContext & AudioWorklet
       class MockAudioContext {
         state = "running";
-        sampleRate = 16000;
+        sampleRate = ctxSampleRate;
         destination = {};
         audioWorklet = {
           addModule: async () => Promise.resolve(),
         };
 
+        constructor() {
+          (window as any).__lastAudioContext = this;
+        }
         createMediaStreamSource() {
           return {
             connect: () => {},
@@ -271,18 +401,19 @@ export async function setupMockEnvironment(
         }
         resume() {
           this.state = "running";
+          (window as any).__audioContextResumed = true;
           return Promise.resolve();
         }
         close() {
           this.state = "closed";
           return Promise.resolve();
         }
-        createBuffer(channels: number, length: number, sampleRate: number) {
+        createBuffer(channels: number, length: number, rate: number) {
           return {
             copyToChannel: () => {},
-            duration: length / sampleRate,
+            duration: length / rate,
             length,
-            sampleRate,
+            sampleRate: rate,
             numberOfChannels: channels,
           };
         }
@@ -326,6 +457,9 @@ export async function setupMockEnvironment(
             return this._onmessage;
           },
         };
+        constructor() {
+          (window as any).__lastWorkletNode = this;
+        }
         connect() {}
         disconnect() {}
       }
@@ -338,6 +472,8 @@ export async function setupMockEnvironment(
       seedCfg: seedConfig,
       autoEmit: autoEmitTokens,
       tokens: initialTokens,
+      reconnTokens: reconnectTokens ?? null,
+      ctxSampleRate: sampleRate,
       sampleCount: audioSamplesPerRecording,
       noDisplayMedia: disableDisplayMedia,
       noDisplayAudio: displayMediaNoAudio,
@@ -350,7 +486,6 @@ export interface SeedDBPayload {
     id: string;
     createdAt: string | Date;
     title: string | null;
-    audioBlobPath?: string;
   }>;
   transcripts?: Array<{
     id: string;
@@ -428,7 +563,6 @@ export async function seedDatabase(page: Page, payload: SeedDBPayload) {
         tx.objectStore("sessions").put({
           ...s,
           createdAt: new Date(s.createdAt),
-          audioBlobPath: s.audioBlobPath ?? "",
         });
       }
       for (const t of data.transcripts ?? []) {

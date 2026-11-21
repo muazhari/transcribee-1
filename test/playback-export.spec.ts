@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
 import { setupMockEnvironment, seedDatabase } from "./helpers";
 import fs from "fs";

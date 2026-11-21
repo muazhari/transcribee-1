@@ -1,180 +1,51 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
+import { setupMockEnvironment } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
-    (window as any).__PLAYWRIGHT_TEST__ = true;
-
-    // Track wake lock calls
-    (window as any).__wakeLockRequested = 0;
-    (window as any).__wakeLockReleased = 0;
-
-    class MockWakeLockSentinel extends EventTarget {
-      released = false;
-      type = "screen";
-      async release() {
-        this.released = true;
-        (window as any).__wakeLockReleased++;
-        this.dispatchEvent(new Event("release"));
-      }
-    }
-
-    const mockWakeLock = {
-      request: async (type: string) => {
-        (window as any).__wakeLockRequested++;
-        return new MockWakeLockSentinel();
+  await setupMockEnvironment(page, {
+    sampleRate: 44100,
+    audioSamplesPerRecording: 0,
+    initialTokens: [
+      {
+        text: "Background",
+        start_ms: 100,
+        duration_ms: 200,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
       },
-    };
-
-    Object.defineProperty(navigator, "wakeLock", {
-      value: mockWakeLock,
-      configurable: true,
-      writable: true,
-    });
-
-    // Mock WebSocket duplex stream
-    class MockWebSocket extends EventTarget {
-      static OPEN = 1;
-      readyState = 0;
-      binaryType = "blob";
-      url = "";
-      onopen: any = null;
-      onmessage: any = null;
-      onerror: any = null;
-      onclose: any = null;
-
-      constructor(url: string) {
-        super();
-        this.url = url;
-        (window as any).__lastWs = this;
-        (window as any).__wsConnectedCount =
-          ((window as any).__wsConnectedCount || 0) + 1;
-
-        setTimeout(() => {
-          this.readyState = 1;
-          const openEvent = new Event("open");
-          this.dispatchEvent(openEvent);
-          if (this.onopen) this.onopen(openEvent);
-        }, 50);
-      }
-
-      send(data: any) {
-        if (typeof data === "string") {
-          setTimeout(() => {
-            const count = (window as any).__wsConnectedCount || 1;
-            const response = {
-              tokens: [
-                {
-                  text: count > 1 ? "Reconnected" : "Background",
-                  start_ms: 100,
-                  duration_ms: 200,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-                {
-                  text: count > 1 ? " Resumed" : " KeepAlive",
-                  start_ms: 300,
-                  duration_ms: 200,
-                  is_final: true,
-                  speaker: "1",
-                  translation_status: "original",
-                  language: "en",
-                },
-              ],
-            };
-            const messageEvent = new MessageEvent("message", {
-              data: JSON.stringify(response),
-            });
-            this.dispatchEvent(messageEvent);
-            if (this.onmessage) this.onmessage(messageEvent);
-          }, 100);
-        }
-      }
-
-      close() {
-        this.readyState = 3;
-        const closeEvent = new Event("close");
-        this.dispatchEvent(closeEvent);
-        if (this.onclose) this.onclose(closeEvent);
-      }
-
-      simulateDrop() {
-        this.readyState = 3;
-        const closeEvent = new CloseEvent("close", {
-          code: 1006,
-          reason: "Connection dropped unexpectedly",
-          wasClean: false,
-        });
-        this.dispatchEvent(closeEvent);
-        if (this.onclose) this.onclose(closeEvent);
-      }
-    }
-
-    (window as any).WebSocket = MockWebSocket;
-
-    // Mock mediaDevices
-    const mockTrack = { stop: () => {}, enabled: true };
-    const mockStream = {
-      getTracks: () => [mockTrack],
-      getAudioTracks: () => [mockTrack],
-      getVideoTracks: () => [mockTrack],
-    };
-
-    if (!navigator.mediaDevices) {
-      Object.defineProperty(navigator, "mediaDevices", {
-        value: {},
-        configurable: true,
-      });
-    }
-    navigator.mediaDevices.getUserMedia = async () => mockStream as any;
-    navigator.mediaDevices.getDisplayMedia = async () => mockStream as any;
-    navigator.mediaDevices.enumerateDevices = async () => [
-      { kind: "audioinput", deviceId: "default", label: "Mic" } as any,
-      { kind: "audiooutput", deviceId: "default", label: "Speaker" } as any,
-    ];
-
-    // Mock AudioContext
-    class MockAudioWorkletNode {
-      port = {
-        postMessage: () => {},
-        onmessage: null as any,
-      };
-      constructor() {
-        (window as any).__lastWorkletNode = this;
-      }
-      connect() {}
-      disconnect() {}
-    }
-
-    class MockAudioContext {
-      sampleRate = 44100;
-      state = "running";
-      destination = {};
-      audioWorklet = {
-        addModule: async () => {},
-      };
-      constructor() {
-        (window as any).__lastAudioContext = this;
-      }
-      createMediaStreamSource() {
-        return { connect: () => {}, disconnect: () => {} };
-      }
-      resume() {
-        this.state = "running";
-        (window as any).__audioContextResumed = true;
-        return Promise.resolve();
-      }
-      close() {
-        this.state = "closed";
-        return Promise.resolve();
-      }
-    }
-
-    (window as any).AudioContext = MockAudioContext;
-    (window as any).webkitAudioContext = MockAudioContext;
-    (window as any).AudioWorkletNode = MockAudioWorkletNode;
+      {
+        text: " KeepAlive",
+        start_ms: 300,
+        duration_ms: 200,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+    ],
+    reconnectTokens: [
+      {
+        text: "Reconnected",
+        start_ms: 100,
+        duration_ms: 200,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+      {
+        text: " Resumed",
+        start_ms: 300,
+        duration_ms: 200,
+        is_final: true,
+        speaker: "1",
+        translation_status: "original",
+        language: "en",
+      },
+    ],
   });
 });
 

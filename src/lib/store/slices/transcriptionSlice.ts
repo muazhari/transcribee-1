@@ -22,6 +22,10 @@ const cleanText = (text: string): string => text.replace(/<end>/g, "");
 const finalizeAll = (transcripts: Transcript[]): Transcript[] =>
   transcripts.map((t) => (t.isFinal ? t : { ...t, isFinal: true }));
 
+const MAX_SEGMENT_CHARS = 800;
+const HARD_MAX_SEGMENT_CHARS = 1200;
+const MAX_SEGMENT_DURATION_MS = 30_000;
+
 const buildSegments = (
   tokens: Transcript[],
   baseIndex: number,
@@ -83,17 +87,30 @@ const buildSegments = (
       continue;
     }
 
-    // Close active segment on speaker or language change
-    if (
-      current &&
-      (current.speakerId !== speakerId ||
+    // Close active segment on speaker, language, or size/duration cap
+    if (current) {
+      const speakerOrLangChanged =
+        current.speakerId !== speakerId ||
         Boolean(
           current.language &&
             token.language &&
             current.language !== token.language,
-        ))
-    ) {
-      current = undefined;
+        );
+      const isWordBoundary =
+        text.startsWith(" ") || /[.!?。！？]\s*$/.test(current.text);
+      const exceededCap =
+        current.isFinal &&
+        token.isFinal &&
+        Boolean(text.trim()) &&
+        (current.text.length >= HARD_MAX_SEGMENT_CHARS ||
+          (isWordBoundary &&
+            (current.text.length >= MAX_SEGMENT_CHARS ||
+              token.startTimestamp - current.startTimestamp >=
+                MAX_SEGMENT_DURATION_MS)));
+
+      if (speakerOrLangChanged || exceededCap) {
+        current = undefined;
+      }
     }
 
     if (current) {
@@ -126,6 +143,8 @@ const buildSegments = (
       (bySpeaker[speakerId] ??= []).push(current);
       segments.push(current);
       tokenOwner?.set(token, current.id);
+    } else {
+      tokenOwner?.set(token, "drop");
     }
 
     if (isEnd) {

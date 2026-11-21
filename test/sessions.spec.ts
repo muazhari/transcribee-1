@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
 import { setupMockEnvironment, seedDatabase } from "./helpers";
 
@@ -49,6 +48,12 @@ test.describe("Session Management & Persistence Suite", () => {
 
     await searchInput.fill("");
     await expect(page.getByText("Beta Release Sync")).toBeVisible();
+
+    // Unnamed session default title ("Session - ...") matches search filter
+    await page.getByRole("button", { name: "+ New Session" }).click();
+    await searchInput.fill("Session -");
+    await expect(page.getByText("No sessions found")).toHaveCount(0);
+    await expect(page.getByText(/Session - \d+/)).toBeVisible();
   });
 
   test("switches sessions and loads associated transcripts and chat history", async ({

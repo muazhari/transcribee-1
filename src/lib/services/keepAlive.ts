@@ -81,10 +81,6 @@ export class KeepAliveManager {
     this.options = {};
   }
 
-  get isRunning(): boolean {
-    return this.isActive;
-  }
-
   // --- Screen Wake Lock API ---
 
   async requestWakeLock(): Promise<void> {
@@ -92,7 +88,8 @@ export class KeepAliveManager {
       typeof navigator === "undefined" ||
       !("wakeLock" in navigator) ||
       !this.isActive ||
-      this.isRequestingWakeLock
+      this.isRequestingWakeLock ||
+      this.wakeLockSentinel
     ) {
       return;
     }
@@ -104,9 +101,16 @@ export class KeepAliveManager {
 
     try {
       this.isRequestingWakeLock = true;
-      this.wakeLockSentinel = await navigator.wakeLock.request("screen");
-      this.wakeLockSentinel.addEventListener("release", () => {
-        this.wakeLockSentinel = null;
+      const sentinel = await navigator.wakeLock.request("screen");
+      if (!this.isActive) {
+        sentinel.release().catch(() => {});
+        return;
+      }
+      this.wakeLockSentinel = sentinel;
+      sentinel.addEventListener("release", () => {
+        if (this.wakeLockSentinel === sentinel) {
+          this.wakeLockSentinel = null;
+        }
         // If still active and document is visible, attempt to re-acquire
         if (
           this.isActive &&

@@ -2,13 +2,16 @@
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
-import { askGeminiStream } from "../lib/services/gemini";
+import {
+  askGeminiStream,
+  SYSTEM_PROMPT_PREFIX,
+  tokenLimits,
+} from "../lib/services/gemini";
 import { db, Transcript } from "../lib/services/db";
 import {
   appendChatMessage,
   clearChatHistory,
   setLoading,
-  recalculateTokens,
 } from "../lib/store/slices/chatContextSlice";
 
 import Button from "./atoms/Button";
@@ -16,25 +19,35 @@ import Input from "./atoms/Input";
 import ChatMessage from "./molecules/ChatMessage";
 import TokenMeter from "./atoms/TokenMeter";
 import WarningBanner from "./atoms/WarningBanner";
-import { generateSrtContent } from "@/lib/utils/exportUtils";
+import {
+  estimateSrtLength,
+  generateSrtContent,
+} from "@/lib/utils/exportUtils";
 
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
 // Smart FIFO: drop the oldest transcript segments (whole speaker turns), then the oldest chat
 // messages, until the prompt fits under the token limit. Only affects the prompt, never stored data.
-function fitToTokenLimit(
+export function fitToTokenLimit(
   transcripts: Transcript[],
   chatHistory: ChatTurn[],
   question: string,
   tokenLimit: number,
 ) {
   const tokensFor = (t: number, c: number) => {
-    const chat = chatHistory
-      .slice(c)
-      .map((msg) => msg.content)
-      .join("\n");
-    const prompt = `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${generateSrtContent(transcripts.slice(t))}\n${chat}\n${question}`;
-    return Math.ceil(prompt.length / 4);
+    const chatLen =
+      chatHistory
+        .slice(c)
+        .reduce((acc, msg) => acc + msg.content.length, 0) +
+      Math.max(0, chatHistory.length - c - 1);
+    const totalChars =
+      SYSTEM_PROMPT_PREFIX.length +
+      estimateSrtLength(transcripts.slice(t)) +
+      1 +
+      chatLen +
+      1 +
+      question.length;
+    return Math.ceil(totalChars / 4);
   };
   // Smallest index in [0, n] that satisfies fits() (fits is monotonic: dropping more never grows the prompt)
   const firstFit = (n: number, fits: (i: number) => boolean) => {
@@ -49,13 +62,17 @@ function fitToTokenLimit(
   };
 
   const t = firstFit(transcripts.length, (i) => tokensFor(i, 0) < tokenLimit);
-  const c =
+  let c =
     tokensFor(t, 0) < tokenLimit
       ? 0
       : firstFit(
           chatHistory.length,
           (i) => tokensFor(transcripts.length, i) < tokenLimit,
         );
+  // Gemini requires multi-turn history to start with a user turn, never an orphan assistant reply
+  while (c < chatHistory.length && chatHistory[c].role === "assistant") {
+    c++;
+  }
   return {
     transcripts: transcripts.slice(t),
     chatHistory: chatHistory.slice(c),
@@ -76,9 +93,6 @@ export default function ChatPanel() {
   const isLoading = useAppSelector((state) => state.chatContext.isLoading);
   const config = useAppSelector((state) => state.config);
 
-  const { tokenCount, tokenLimit, tokenLimitExceeded, tokenLimitTruncated } =
-    useAppSelector((state) => state.chatContext);
-
   const [question, setQuestion] = useState("");
   const [streamedResponse, setStreamedResponse] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,42 +105,37 @@ export default function ChatPanel() {
     }
   }, [chatHistory, streamedResponse, isLoading]);
 
-  const transcriptsText = useMemo(
-    () => generateSrtContent(transcripts),
+  const transcriptsCharLength = useMemo(
+    () => estimateSrtLength(transcripts),
     [transcripts],
   );
-  const chatHistoryText = useMemo(
-    () => chatHistory.map((msg) => msg.content).join("\n"),
+  const chatHistoryCharLength = useMemo(
+    () =>
+      chatHistory.reduce((acc, msg) => acc + msg.content.length, 0) +
+      Math.max(0, chatHistory.length - 1),
     [chatHistory],
   );
 
-  // Recalculate token count and trigger alerts
-  useEffect(() => {
-    if (activeSession) {
-      dispatch(
-        recalculateTokens({
-          transcriptsText,
-          chatHistoryText,
-          questionText: question,
-          aiModel: config.aiModel,
-        }),
-      );
-    }
-  }, [
-    transcriptsText,
-    chatHistoryText,
-    question,
-    config.aiModel,
-    activeSession,
-    dispatch,
-  ]);
+  const tokenLimit = tokenLimits[config.aiModel] ?? 1000000;
+  const totalChars =
+    SYSTEM_PROMPT_PREFIX.length +
+    transcriptsCharLength +
+    1 +
+    chatHistoryCharLength +
+    1 +
+    question.length;
+  const tokenCount = Math.ceil(totalChars / 4);
+  const tokenPct = (tokenCount / tokenLimit) * 100;
+  const tokenLimitExceeded = tokenPct >= 85;
+  const tokenLimitTruncated = tokenPct >= 100;
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const activeSessionIdRef = useRef<string | undefined>(activeSession?.id);
-  activeSessionIdRef.current = activeSession?.id;
+  const clearGenRef = useRef(0);
 
-  // Abort in-flight stream when switching sessions or unmounting
+  // Sync ref and abort in-flight stream when switching sessions or unmounting
   useEffect(() => {
+    activeSessionIdRef.current = activeSession?.id;
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -154,6 +163,7 @@ export default function ChatPanel() {
     }
 
     const sessionId = activeSession.id;
+    const clearGen = clearGenRef.current;
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -187,13 +197,17 @@ export default function ChatPanel() {
         },
         (chunk) => {
           currentResponse += chunk;
-          if (activeSessionIdRef.current === sessionId) {
+          if (
+            activeSessionIdRef.current === sessionId &&
+            clearGenRef.current === clearGen
+          ) {
             setStreamedResponse(currentResponse);
           }
         },
         controller.signal,
       );
 
+      if (clearGenRef.current !== clearGen) return;
       if (activeSessionIdRef.current === sessionId) {
         dispatch(appendChatMessage({ role: "assistant", content: result }));
       }
@@ -205,6 +219,7 @@ export default function ChatPanel() {
         timestamp: new Date(),
       });
     } catch (error: unknown) {
+      if (clearGenRef.current !== clearGen) return;
       const isAborted =
         (error instanceof Error &&
           (error.name === "AbortError" || error.message.includes("Aborted"))) ||
@@ -247,13 +262,22 @@ export default function ChatPanel() {
         }
       }
     } finally {
-      setStreamedResponse("");
-      dispatch(setLoading(false));
-      abortControllerRef.current = null;
+      if (
+        abortControllerRef.current === controller ||
+        abortControllerRef.current === null
+      ) {
+        setStreamedResponse("");
+        dispatch(setLoading(false));
+        abortControllerRef.current = null;
+      }
     }
   };
 
   const handleClear = async () => {
+    clearGenRef.current++;
+    handleCancel();
+    setStreamedResponse("");
+    dispatch(setLoading(false));
     dispatch(clearChatHistory());
     if (activeSession) {
       await db.clearChatPairs(activeSession.id);

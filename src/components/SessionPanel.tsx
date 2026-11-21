@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "../lib/store/storeHooks";
 import { Session, db } from "../lib/services/db";
 import {
@@ -11,7 +11,12 @@ import {
   setTranscripts,
   setSessionId,
 } from "../lib/store/slices/transcriptionSlice";
-import { clearChatHistory, setChatHistory } from "@/lib/store/slices/chatContextSlice";
+import {
+  clearChatHistory,
+  setChatHistory,
+} from "@/lib/store/slices/chatContextSlice";
+import { setStreamError } from "@/lib/store/slices/mediaControlSlice";
+import { getSessionTitle } from "@/lib/utils/transcriptUtils";
 
 import Button from "./atoms/Button";
 import SearchBar from "./molecules/SearchBar";
@@ -36,21 +41,27 @@ export default function SessionPanel({
   const isRecording = useAppSelector((state) => state.mediaControl.isRecording);
 
   const [search, setSearch] = useState("");
+  const selectedSessionIdRef = useRef<string | null>(null);
 
   const handleSelectSession = async (session: Session) => {
     if (isRecording) {
       alert("Please stop recording before switching sessions.");
       return;
     }
+    selectedSessionIdRef.current = session.id;
     dispatch(setActiveSession(session));
     dispatch(setSessionId(session.id));
+    dispatch(clearChatHistory());
+    dispatch(setStreamError(null));
 
-    // Fetch transcripts and Chats from DB
+    // Fetch transcripts and Chats from DB, ignoring stale responses if user switched again
     try {
       const transcripts = await db.getTranscripts(session.id);
+      if (selectedSessionIdRef.current !== session.id) return;
       dispatch(setTranscripts(transcripts));
 
       const chats = await db.getChatPairs(session.id);
+      if (selectedSessionIdRef.current !== session.id) return;
 
       const chatMessages = chats.flatMap((chat) => [
         { role: "user" as const, content: chat.question },
@@ -83,6 +94,7 @@ export default function SessionPanel({
       await db.deleteSession(sessionId);
       dispatch(removeSessionFromList(sessionId));
       if (activeSession?.id === sessionId) {
+        selectedSessionIdRef.current = null;
         dispatch(clearChatHistory());
         dispatch(setSessionId(null));
       }
@@ -91,11 +103,9 @@ export default function SessionPanel({
     }
   };
 
-  const filteredSessions = sessions.filter((s) => {
-    const title =
-      s.title || `Session ${new Date(s.createdAt).toLocaleString()}`;
-    return title.toLowerCase().includes(search.toLowerCase());
-  });
+  const filteredSessions = sessions.filter((s) =>
+    getSessionTitle(s).toLowerCase().includes(search.toLowerCase()),
+  );
 
   return (
     <div className="w-full min-w-0 h-full bg-neutral-950 lg:border-r border-white/10 flex flex-col text-white">

@@ -12,6 +12,9 @@ type ThinkingLevel = NonNullable<
   GoogleGenerativeAIChatInput["thinkingConfig"]
 >["thinkingLevel"];
 
+export const SYSTEM_PROMPT_PREFIX =
+  "You are an AI Assistant answering queries based on the following real-time transcript:\n\n";
+
 export const tokenLimits: Record<string, number> = {
   "gemini-4-neon": 1000000,
   "gemini-4-carbon": 1000000,
@@ -35,25 +38,6 @@ export async function askGeminiStream(
   signal?: AbortSignal,
 ): Promise<string> {
   const activeSignal = signal || config.signal;
-
-  if (
-    typeof window !== "undefined" &&
-    (window as unknown as { __PLAYWRIGHT_TEST__?: boolean }).__PLAYWRIGHT_TEST__
-  ) {
-    const mockResponse =
-      "This is a mock response from Gemini based on the transcript.";
-    const chunks = mockResponse.split(" ");
-    for (let i = 0; i < chunks.length; i++) {
-      if (activeSignal?.aborted) {
-        throw new DOMException("Aborted", "AbortError");
-      }
-      const chunk = chunks[i] + " ";
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      onChunk(chunk);
-    }
-    return mockResponse;
-  }
-
   const modelName = config.model;
   const thinkingLevel = config.thinkingLevel?.trim().toUpperCase();
 
@@ -73,9 +57,7 @@ export async function askGeminiStream(
 
   // Compile prompt message sequence
   const messages = [
-    new SystemMessage(
-      `You are an AI Assistant answering queries based on the following real-time transcript:\n\n${config.context}`,
-    ),
+    new SystemMessage(`${SYSTEM_PROMPT_PREFIX}${config.context}`),
     ...config.chatHistory.map((msg) =>
       msg.role === "assistant"
         ? new AIMessage(msg.content)
@@ -92,8 +74,8 @@ export async function askGeminiStream(
     if (activeSignal?.aborted) {
       throw new DOMException("Aborted", "AbortError");
     }
-    const text = chunk.content;
-    if (typeof text === "string" && text) {
+    const text = chunk.text;
+    if (text) {
       fullResponse += text;
       onChunk(text);
     }
