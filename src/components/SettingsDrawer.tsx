@@ -241,7 +241,7 @@ export default function SettingsDrawer({
       <div className="relative w-full max-w-md h-full bg-neutral-900 border-l border-white/10 text-white flex flex-col shadow-2xl overflow-y-auto">
         <div className="p-6 border-b border-white/10 flex items-center justify-between">
           <h2 className="text-xl font-bold tracking-tight bg-gradient-to-r from-violet-400 to-indigo-400 bg-clip-text text-transparent">
-            System Configurations
+            Settings
           </h2>
           <Button
             onClick={onCloseHandler}
@@ -377,24 +377,9 @@ export default function SettingsDrawer({
               {...register("enableLanguageIdentification")}
             />
 
-            <Checkbox
-              label="Keep Awake & Background Resilience"
-              {...register("enableKeepAwake")}
-            />
-          </div>
+            <Checkbox label="Keep Alive" {...register("enableKeepAwake")} />
 
-          {/* Redesigned Translation Settings Section */}
-          <div className="flex flex-col gap-4 bg-neutral-800/40 p-4 rounded-xl border border-white/5">
-            <div className="flex items-center justify-between border-b border-white/5 pb-2">
-              <span className="text-xs font-bold tracking-wider text-neutral-400 uppercase">
-                Translation
-              </span>
-            </div>
-
-            <Checkbox
-              label="Enable Translation"
-              {...register("enableTranslation")}
-            />
+            <Checkbox label="Translation" {...register("enableTranslation")} />
 
             {enableTranslation && (
               <div className="flex flex-col gap-4 mt-2">
@@ -461,12 +446,12 @@ export default function SettingsDrawer({
               { value: "mic-only", label: "Microphone Only" },
               {
                 value: "speaker-only",
-                label: `System Speakers Only ${!hasDisplayMedia ? " (Not supported on this device)" : ""}`,
+                label: `Speaker Only ${!hasDisplayMedia ? " (Not supported on this device)" : ""}`,
                 disabled: !hasDisplayMedia,
               },
               {
                 value: "mix",
-                label: `Mix Mic + System Speakers ${!hasDisplayMedia ? " (Not supported on this device)" : ""}`,
+                label: `Mix Microphone + Speaker ${!hasDisplayMedia ? " (Not supported on this device)" : ""}`,
                 disabled: !hasDisplayMedia,
               },
             ]}
@@ -480,7 +465,7 @@ export default function SettingsDrawer({
             size="none"
             className="mt-auto w-full !py-3 !rounded-lg"
           >
-            Save configurations
+            Save
           </Button>
         </form>
       </div>

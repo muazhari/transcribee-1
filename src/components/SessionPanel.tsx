@@ -110,12 +110,12 @@ export default function SessionPanel({
   return (
     <div className="w-full min-w-0 h-full bg-neutral-950 lg:border-r border-white/10 flex flex-col text-white">
       {/* Brand Logo & Action */}
-      <div className="p-6 border-b border-white/10 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center font-bold text-lg tracking-wider">
+      <div className="px-4 py-5 border-b border-white/10 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 shrink-0 rounded-lg bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center font-bold text-lg tracking-wider">
             T
           </div>
-          <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
+          <span className="truncate font-extrabold text-xl tracking-tight bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
             Transcribee
           </span>
         </div>
@@ -123,7 +123,7 @@ export default function SessionPanel({
           onClick={openSettings}
           variant="secondary"
           size="none"
-          className="!p-2 !rounded-lg"
+          className="shrink-0 !p-2 !rounded-lg"
           title="Open Settings"
         >
           ⚙️

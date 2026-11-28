@@ -25,10 +25,21 @@ import PlaybackPanel from "../components/PlaybackPanel";
 
 const MOBILE_TABS = [
   { id: "sessions", label: "🏠 Home" },
-  { id: "transcription", label: "🎙️ Live Session" },
-  { id: "playback", label: "🔊 Playback Session" },
-  { id: "chat", label: "🤖 AI Chat" },
+  { id: "transcription", label: "🎙️ Live" },
+  { id: "playback", label: "🔊 Playback" },
+  { id: "chat", label: "🤖 Chat" },
 ] as const;
+
+const DESKTOP_TABS = MOBILE_TABS.filter(
+  (tab) => tab.id === "transcription" || tab.id === "playback",
+);
+
+const getTabButtonClass = (isActive: boolean) =>
+  `px-4 py-2 rounded-xl w-full whitespace-nowrap text-xs font-bold transition-all duration-200 cursor-pointer ${
+    isActive
+      ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
+      : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
+  }`;
 
 interface ResizeHandleProps {
   label: string;
@@ -159,11 +170,7 @@ export default function Home() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all duration-200 ${
-                activeTab === tab.id
-                  ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-950/30"
-                  : "text-neutral-400 hover:text-white bg-neutral-900/60 border border-white/5"
-              }`}
+              className={getTabButtonClass(activeTab === tab.id)}
             >
               {tab.label}
             </button>
@@ -212,27 +219,24 @@ export default function Home() {
           } lg:flex flex-1 flex-col min-w-0 h-full relative`}
         >
           {/* Workspace Tabs (Desktop Only) */}
-          <div className="hidden lg:flex bg-neutral-950 border-b border-white/10 px-6 py-2.5 gap-4 shrink-0">
-            <button
-              onClick={() => setActiveTab("transcription")}
-              className={`pb-2 pt-1 text-sm font-bold border-b-2 transition-all cursor-pointer ${
-                activeTab !== "playback"
-                  ? "border-violet-500 text-white"
-                  : "border-transparent text-neutral-400 hover:text-white"
-              }`}
-            >
-              🎙️ Live Session
-            </button>
-            <button
-              onClick={() => setActiveTab("playback")}
-              className={`pb-2 pt-1 text-sm font-bold border-b-2 transition-all cursor-pointer ${
-                activeTab === "playback"
-                  ? "border-violet-500 text-white"
-                  : "border-transparent text-neutral-400 hover:text-white"
-              }`}
-            >
-              🔊 Playback Session
-            </button>
+          <div className="hidden lg:flex w-full bg-neutral-950 border-b border-white/10 overflow-x-auto scrollbar-none shrink-0">
+            <div className="flex px-4 py-3 gap-2 min-w-max w-full justify-around">
+              {DESKTOP_TABS.map((tab) => {
+                const isActive =
+                  tab.id === "playback"
+                    ? activeTab === "playback"
+                    : activeTab !== "playback";
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={getTabButtonClass(isActive)}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {activeTab === "playback" ? (
